@@ -1,0 +1,12 @@
+[Unit]
+Description=Push pop-daejeon metrics to Pangyo Pushgateway
+After=network.target docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/push-metrics-daejeon.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

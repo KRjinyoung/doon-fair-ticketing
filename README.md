@@ -99,7 +99,15 @@ bash scripts/daejeon_relay.sh start
 exit
 
 docker compose -f docker-compose.daejeon.yml up -d --build
-nohup bash scripts/push_metrics_loop.sh >/dev/null 2>&1 &
+```
+
+대전 PoP 지표를 판교 Pushgateway로 보내는 루프는 systemd 서비스로 설치한다.
+
+```bash
+sudo install -m 755 scripts/push_metrics_loop.sh /usr/local/bin/push-metrics-daejeon.sh
+sudo install -m 644 scripts/push-metrics-daejeon.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now push-metrics-daejeon
 ```
 
 ### Clock offset collector

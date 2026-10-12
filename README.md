@@ -91,10 +91,15 @@ docker compose -f docker-compose.pangyo.yml up -d --build
 
 ### Run (Daejeon)
 
-판교 Kafka(13092), central(10001), pushgateway(13091)로 가는 socat 중계기가 대전 호스트에 떠 있어야 한다.
+대전은 hirun 프록시를 거쳐야 판교에 닿는다. hirun 셸에서 socat 중계기를 먼저 띄운다.
 
 ```bash
+~/hirun -c bash
+bash scripts/daejeon_relay.sh start
+exit
+
 docker compose -f docker-compose.daejeon.yml up -d --build
+nohup bash scripts/push_metrics_loop.sh >/dev/null 2>&1 &
 ```
 
 ### Clock offset collector

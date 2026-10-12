@@ -381,11 +381,8 @@ async def receive_seat_request(req: SeatRequest, request: Request):
     # 69us)이 접수 시각에 섞인다. 그러면 토큰을 가진 사용자만 늦게 접수되어
     # 로그인한 사람이 손해를 본다. 공정 판정이라는 주제 자체가 무너지는 지점이다.
     # 미들웨어가 없거나 꺼져 있으면 예전처럼 여기서 찍는다.  [POPAUTH_PAYLOAD_V1]
-    _edge_ns = getattr(request.state, "edge_arrival_ns", None)
-    if _edge_ns:
-        arrival_time = datetime.fromtimestamp(_edge_ns / 1_000_000_000, timezone.utc)
-    else:
-        arrival_time = datetime.now(timezone.utc)
+    _edge_ns = getattr(request.state, "edge_arrival_ns", None) or time.time_ns()
+    arrival_time = datetime.fromtimestamp(_edge_ns / 1_000_000_000, timezone.utc)
 
     # 검증 결과. 미들웨어가 넣어둔 값이며, 없으면 익명으로 본다.
     _identity = getattr(request.state, "identity", None) or _pa.ANONYMOUS
@@ -396,8 +393,13 @@ async def receive_seat_request(req: SeatRequest, request: Request):
     offset_ms = round(clock_offset_ms, 3)
 
     request_id = str(uuid.uuid4())
-    # 나노초 정수에서 바로 밀리초를 뽑는다(부동소수 왕복 제거). [POPAUTH_PAYLOAD_V1]
-    epoch_ms = (_edge_ns // 1_000_000) if _edge_ns else int(arrival_time.timestamp() * 1000)
+    # 나노초 정수에서 바로 뽑는다(부동소수 왕복 제거). [POPAUTH_PAYLOAD_V1]
+    epoch_ms = _edge_ns // 1_000_000
+    # *** 판정에는 마이크로초 값을 쓴다 ***  [ARRIVAL_US_V1]
+    # 밀리초로 자르면 같은 1ms 안에 들어온 두 PoP 의 요청이 같은 값이 되고,
+    # 그 동점을 µs 단위 시계 오프셋이 가르게 된다. 실제 도착 순서와 무관하게
+    # 오프셋이 작은 PoP 가 늘 이기는 지역 편향이다. 오프셋 정밀도(1us)에 맞춘다.
+    epoch_us = _edge_ns // 1_000
 
     # nginx가 X-Forwarded-For/X-Real-IP를 붙여주므로 그걸 우선 쓰고, 없으면
     # 소켓 레벨의 접속 IP로 폴백한다 (로컬 직접 접속 테스트 등).
@@ -414,6 +416,7 @@ async def receive_seat_request(req: SeatRequest, request: Request):
         "pop_id": POP_ID,
         "pop_arrival_timestamp": arrival_time.isoformat(),
         "pop_arrival_epoch_ms": epoch_ms,
+        "pop_arrival_epoch_us": epoch_us,
         # PoP는 시각을 보정하지 않으므로 항상 0. (보정 여부는 중앙이 결정한다.)
         "clock_offset_ms_applied": 0.0,
         # 공통 기준 NTP 서버 대비 이 PoP의 시계 오차. 중앙이 (원본 + offset)으로 보정한다.
@@ -437,8 +440,10 @@ async def receive_seat_request(req: SeatRequest, request: Request):
                     "seat_id": req.seat_id,
                     "request_id": request_id,
                     "pop_id": POP_ID,
-                    # 보정하지 않은 원본 도착 시각.
+                    # 보정하지 않은 원본 도착 시각. 판정은 us 값을 쓰고, ms 는
+                    # us 를 모르는 구버전 central 과 기존 화면/로그를 위해 남긴다.
                     "pop_arrival_epoch_ms": epoch_ms,
+                    "pop_arrival_epoch_us": epoch_us,
                     # *** 중앙이 판정할 때 위 원본에 더할 보정값 ***
                     # 공통 기준 NTP 서버 대비 이 PoP의 시계 오차(5초마다 갱신).
                     "clock_offset_ms_measured": offset_ms,

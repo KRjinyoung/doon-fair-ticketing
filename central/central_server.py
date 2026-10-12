@@ -47,6 +47,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from typing import Optional
 
 import asyncpg
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
@@ -649,10 +650,28 @@ class JudgeRequest(BaseModel):
     request_id: str
     pop_id: str
     pop_arrival_epoch_ms: int
+    # 같은 시각의 마이크로초 값. 있으면 판정에 이 값을 쓴다.  [ARRIVAL_US_V1]
+    pop_arrival_epoch_us: Optional[int] = None
     # PoP가 공통 기준 NTP 서버 대비 측정한 자기 시계 오차. 판정 시 위 원본에 더한다.
     # 기본값 0.0인 이유: 오프셋을 안 보내는 구버전 PoP나 수동 테스트 요청이 와도
     # "보정 없음"으로 취급해 판정이 멈추지 않게 한다.
     clock_offset_ms_measured: float = 0.0
+
+
+def arrival_ms_precise(epoch_ms: int, epoch_us: Optional[int]) -> float:
+    """
+    판정에 쓸 원본 도착 시각(ms, 소수점 아래 µs 포함).  [ARRIVAL_US_V1]
+
+    PoP 가 ms 로 자른 값만 쓰면 같은 1ms 안의 요청들이 동점이 되고, 그 동점을
+    µs 단위 시계 오프셋이 가른다 — 실제 순서와 무관하게 오프셋이 작은 PoP 가 늘
+    이기는 지역 편향이다. 그래서 us 값이 있으면 그것을 쓴다.
+    us 가 없거나(구버전 PoP, 토픽에 남은 옛 메시지) ms 와 1ms 이상 어긋나면 ms 로 판정한다.
+    """
+    if epoch_us is not None:
+        precise = epoch_us / 1000.0
+        if abs(precise - epoch_ms) < 1.0:
+            return precise
+    return float(epoch_ms)
 
 
 async def publish_seat_status(payload: dict):
@@ -676,6 +695,7 @@ def apply_seat_request(
     pop_id: str,
     pop_arrival_epoch_ms: int,
     clock_offset_ms_measured: float = 0.0,
+    pop_arrival_epoch_us: Optional[int] = None,
 ) -> dict:
     """
     판정 로직의 실제 본체. HTTP 핸들러(/judge)와 Kafka consumer 양쪽에서
@@ -696,13 +716,16 @@ def apply_seat_request(
     # 더해줘야 "기준 시계로 환산한 실제 도착 시각"이 된다.
     # 원본도 함께 보관하는 이유: 판정 후에 "무엇을 얼마나 보정해서 이 결과가 나왔는지"를
     # 되짚을 수 있어야 하기 때문 (보정값만 남기면 검증이 불가능해진다).
-    corrected_epoch_ms = pop_arrival_epoch_ms + clock_offset_ms_measured
+    corrected_epoch_ms = (
+        arrival_ms_precise(pop_arrival_epoch_ms, pop_arrival_epoch_us) + clock_offset_ms_measured
+    )
 
     entry = {
         "request_id": request_id,
         "pop_id": pop_id,
         # PoP가 찍은 보정 전 원본 시각.
         "pop_arrival_epoch_ms": pop_arrival_epoch_ms,
+        "pop_arrival_epoch_us": pop_arrival_epoch_us,
         # 실제 판정에 쓰이는 보정된 시각.
         "corrected_epoch_ms": corrected_epoch_ms,
     }
@@ -743,6 +766,7 @@ async def receive_request(req: JudgeRequest):
         req.pop_id,
         req.pop_arrival_epoch_ms,
         req.clock_offset_ms_measured,
+        req.pop_arrival_epoch_us,
     )
 
 
@@ -793,6 +817,7 @@ async def kafka_consume_loop(consumer_idx: int = 0):
                             # PoP가 아직 떠 있거나, 토픽에 예전 메시지가 남아 있어도
                             # 판정이 KeyError로 멈추지 않게 한다 (보정 없이 판정).
                             data.get("clock_offset_ms_measured", 0.0),
+                            data.get("pop_arrival_epoch_us"),
                         )
         except asyncio.CancelledError:
             await consumer.stop()
@@ -1393,13 +1418,15 @@ if _REDIS_BACKEND:
 
     def _redis_entry(data: dict) -> dict:
         raw = data["pop_arrival_epoch_ms"]
+        raw_us = data.get("pop_arrival_epoch_us")
         off = data.get("clock_offset_ms_measured", 0.0)
         return {
             "request_id": data["request_id"],
             "pop_id": data["pop_id"],
             "pop_arrival_epoch_ms": raw,
+            "pop_arrival_epoch_us": raw_us,
             # 실제 판정에 쓰이는 보정된 시각 (기존 apply_seat_request 와 같은 식)
-            "corrected_epoch_ms": raw + off,
+            "corrected_epoch_ms": arrival_ms_precise(raw, raw_us) + off,
         }
 
     async def _redis_apply_batch(msgs) -> None:

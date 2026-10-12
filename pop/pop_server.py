@@ -911,8 +911,8 @@ async def heartbeat_send_loop():
             )
         except asyncio.CancelledError:
             return
-        except Exception:
-            pass
+        except Exception as _hb_e:
+            print(f"[{POP_ID}] heartbeat 발행 실패: {type(_hb_e).__name__}: {_hb_e}", flush=True)
         try:
             await asyncio.sleep(HEARTBEAT_INTERVAL)
         except asyncio.CancelledError:

@@ -89,6 +89,14 @@ cp .env.example .env
 docker compose -f docker-compose.pangyo.yml up -d --build
 ```
 
+### Run (Daejeon)
+
+판교 Kafka(13092), central(10001), pushgateway(13091)로 가는 socat 중계기가 대전 호스트에 떠 있어야 한다.
+
+```bash
+docker compose -f docker-compose.daejeon.yml up -d --build
+```
+
 ### Clock offset collector
 
 PoP가 올라가는 모든 호스트에 설치한다. 설치하지 않으면 해당 PoP는 보정 없이 동작한다.
@@ -131,6 +139,7 @@ bash scripts/cheetah_tunnel.sh      # 서울 AI Cloud Kafka 터널
 ├── scripts/                    # 운영, 시연, 부하 테스트
 ├── doonload.py                 # 부하 생성기
 ├── docker-compose.pangyo.yml
+├── docker-compose.daejeon.yml
 └── SYSTEM.md                   # 시스템 상세 문서
 ```
 

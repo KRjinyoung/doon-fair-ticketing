@@ -1,0 +1,69 @@
+# 대전 PoP 스택.
+#
+# *** 판교와 결정적으로 다른 점 ***
+# 여기에는 kafka / postgres / central 이 없다. 그것들은 전부 판교에만 있고,
+# 대전은 "엣지" 역할만 한다:
+#   - 사용자 요청을 받아 도착 시각을 찍고
+#   - 판교의 Kafka로 발행하고
+#   - 판교가 발행한 좌석 상태(seat-status)를 구독해 로컬 캐시를 채운다
+# 판정(경쟁/승자 결정)은 전적으로 판교 중앙서버가 한다.
+#
+# 그래서 대전에서 뜨는 컨테이너는 pop-daejeon과 nginx 딱 둘뿐이다.
+
+services:
+  pop-daejeon:
+    build: ./pop
+    container_name: pop-daejeon
+    restart: unless-stopped
+    # *** 판교로 가는 모든 통신은 대전 호스트의 socat 중계기를 거친다 ***
+    # 대전은 판교 사설망(10.246.246.0/24)에 직접 갈 수 없고, hirun 프록시를 통해서만
+    # 닿는다. 그런데 컨테이너는 프록시를 물려받지 못하므로, hirun으로 실행한 socat이
+    # 대전 호스트에서 중계 역할을 한다. 컨테이너 입장에서는 그냥 자기 호스트
+    # (172.17.0.1 = 도커 브리지 게이트웨이)에 붙는 것뿐이다.
+    extra_hosts:
+      # 판교 Kafka가 자기를 'kafka-external:13092'로 광고하므로, 그 이름을
+      # 중계기가 있는 대전 호스트로 매핑해준다. 이게 없으면 브로커가 알려준
+      # 주소로 컨테이너가 직접 나가려다 실패한다.
+      - "kafka-external:172.17.0.1"
+    environment:
+      - HEARTBEAT_INTERVAL_SEC=1
+      # 워커 수와 지표 합산 디렉터리  [WORKERS_V1]
+      - UVICORN_WORKERS=4
+      - PROMETHEUS_MULTIPROC_DIR=/tmp/prom_multiproc
+      # *** 이 값이 판정 로그와 대시보드에서 대전을 구분하는 유일한 키다 ***
+      # pop_server.py가 seat-status 구독 group_id를 pop-status-cache-{POP_ID}로
+      # 만들기 때문에, 이 값이 판교와 겹치면 두 PoP가 같은 컨슈머 그룹으로 묶여
+      # 좌석 이벤트가 둘로 나뉘어 배달된다(각자 절반만 받는 사고).
+      - POP_ID=pop-daejeon
+      # 1차 봇 필터 동작 모드: off | monitor | enforce
+      #   monitor = 판정만 하고 통과시킴. 부하 테스트(curl)가 그대로 돌아간다.
+      #   시연에서 차단을 보여줄 때만 enforce 로 바꾼다.
+      - BOT_FILTER_MODE=monitor
+
+      # 판교 중앙서버 (잔여석 조회, 인증 공개키 조회). 중계기의 10001 포트로 간다.
+      - CENTRAL_URL=http://172.17.0.1:10001
+
+      # 판교 Kafka. 최초 접속은 이 주소로, 이후 브로커가 알려주는
+      # kafka-external:13092 도 위 extra_hosts 덕분에 같은 곳으로 간다.
+      - KAFKA_BROKER=kafka-external:13092
+      # 호스트 수집기가 5초마다 갱신하는 chrony 오프셋 파일.
+      - CLOCK_OFFSET_FILE=/clock/tracking.csv
+
+      - PYTHONUNBUFFERED=1
+
+    # *** 이 마운트가 없으면 오프셋이 0.0 으로 고정되어
+    # *** 대전만 보정을 못 받는 조용한 불공정이 발생한다.
+    volumes:
+      - /run/pop-clock:/clock:ro
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - "13198:80"
+    volumes:
+      - ./nginx/daejeon.conf:/etc/nginx/conf.d/default.conf:ro
+      # 정적 파일을 nginx가 직접 응답 -> PoP 컨테이너까지 트래픽이 가지 않는다.
+      - ./pop/frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - pop-daejeon

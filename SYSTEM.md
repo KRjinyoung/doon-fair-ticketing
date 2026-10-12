@@ -19,7 +19,7 @@
 | `pushgateway` | v1.8.0 | 13091 | 대전 PoP 지표 수신 창구 |
 | `kafka-exporter` / `postgres-exporter` | — | (내부) | Kafka lag / DB 부하 지표 |
 
-대전 PoP는 별도 호스트에서 `docker-compose.daejeon.yml`(이 저장소 밖)로 뜨며,
+대전 PoP는 별도 호스트에서 `docker-compose.daejeon.yml`로 뜨며,
 호스트의 socat 중계기를 거쳐 판교의 Kafka(13092)와 pushgateway(13091)에 **대전이 먼저 연결하는 방향**으로만 붙는다.
 그래서 Kafka EXTERNAL 광고 주소가 IP가 아니라 `kafka-external` 이름이고, 대전 compose가 `extra_hosts`로 그 이름을 자기 호스트에 매핑한다.
 

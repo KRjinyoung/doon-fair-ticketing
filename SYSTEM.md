@@ -172,4 +172,4 @@ PoP: 5초마다 CSV 5번째 필드(System time, 초) × 1000 → clock_offset_ms
 - 결제/발권 연동 없음(화면 시뮬레이션). 좌석 총 수 608은 `seat.html` ZONES와 `central_server.py TOTAL_SEATS`, `doonload.py`에 각각 하드코딩되어 사람이 맞춰야 한다.
 - DB 비밀번호·Grafana 익명 접속은 데모용 설정.
 - 봇 필터의 rate limit 상태는 워커별 메모리라 워커 4개면 실효 한도가 4배로 느슨하다.
-- `detection-log` 소비자(서울 AI Cloud)는 이 저장소 밖에 있다. 여기서는 발행만 한다.
+- `detection-log` 소비자는 서울 AI Cloud pod 에서 돈다 (`seoul/collector.py`). 판교에서는 발행만 한다.

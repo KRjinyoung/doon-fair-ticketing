@@ -1,0 +1,57 @@
+# 판교 HPC 스택용 Prometheus 설정.
+# Prometheus는 pull 방식이라, 여기 적힌 대상들의 /metrics를 5초마다 직접 긁어간다.
+# (각 서비스가 Prometheus로 밀어 보내는 게 아니라 Prometheus가 가지러 간다.)
+#
+# job_name이 곧 Grafana 쿼리에서 쓰는 job 라벨이 되므로, 나중에 대전 PoP가 붙으면
+# 여기에 pop-daejeon 항목만 추가하면 대시보드는 자동으로 두 PoP를 구분해서 보여준다.
+# *** 준실시간 설정 (2026-08-14) ***
+# 수집 주기를 5s -> 1s로 줄였다. 대시보드가 반응하는 속도의 하한은 결국
+# "Prometheus가 얼마나 자주 긁어오는가"라서, 여기가 가장 큰 병목이었다.
+# scrape_timeout은 반드시 scrape_interval보다 작아야 한다(Prometheus 기동 시 검증함).
+#
+# 비용: 시계열 저장량이 5배로 늘지만, 우리 규모(9개 대상, 수백 개 시계열)에서는
+# 하루치가 수백 MB 수준이라 무시할 만하다. /metrics 응답도 작아서 앱 부하도 미미하다.
+global:
+  scrape_interval: 1s
+  scrape_timeout: 900ms
+  evaluation_interval: 1s
+
+scrape_configs:
+  # 중앙 판정 서버: 판정/좌석확정/DB쓰기 관련 커스텀 지표
+  - job_name: 'central'
+    static_configs:
+      - targets: ['central:8080']
+
+  # 판교 PoP: 요청 접수/Kafka 발행/클럭 오프셋 지표
+  - job_name: 'pop-pangyo'
+    static_configs:
+      - targets: ['pop-pangyo:8000']
+
+  # *** 대전 PoP: Pushgateway를 거쳐서 받는다 ***
+  # 판교 -> 대전 방향이 열려 있지 않아 대전을 직접 긁을 수 없다.
+  # 대신 대전이 자기 지표를 pushgateway로 밀어 넣고, 여기서는 그 창구만 긁는다.
+  #
+  # honor_labels: true 가 반드시 필요하다.
+  # 이게 없으면 Prometheus가 여기서 가져온 지표에 job="pushgateway"를 덮어써서
+  # 대전이 보낸 pop_id 같은 원래 라벨이 가려지고, 대시보드에서 판교/대전 구분이 깨진다.
+  - job_name: 'pushgateway'
+    honor_labels: true
+    static_configs:
+      - targets: ['pushgateway:9091']
+
+  # Postgres 부하 지표 (커넥션 수, 트랜잭션율, 캐시 히트율, 데드락 등)
+  # 앱이 아니라 DB 자체가 어떤 상태인지를 별도 exporter가 번역해서 노출한다.
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  # Kafka 토픽/컨슈머그룹 지표 (토픽별 누적 메시지 수, consumer lag)
+  # *** consumer lag이 핵심 *** — central이 PoP 발행 속도를 못 따라가면 여기서 먼저 보인다.
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+
+  # Prometheus 자기 자신 (수집이 제대로 돌고 있는지 확인용)
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

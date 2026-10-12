@@ -1,0 +1,19 @@
+# Grafana가 켜지자마자 Prometheus를 데이터소스로 자동 등록한다.
+# 이게 없으면 매번 Grafana UI에서 수동으로 "Add data source"를 눌러야 한다.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    uid: koren-prometheus
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      # *** 중요 *** Grafana에게 "이 Prometheus는 1초마다 수집한다"고 알려주는 값.
+      # 대시보드 쿼리가 쓰는 $__rate_interval이 이 값을 기준으로 계산되므로
+      # (대략 4배 = 4s), 여기를 안 맞추면 Grafana가 기본값 15s로 가정해서
+      # rate 윈도우가 60s로 잡히고, 그래프가 실제보다 훨씬 굼뜨게 보인다.
+      timeInterval: "1s"
+      httpMethod: POST

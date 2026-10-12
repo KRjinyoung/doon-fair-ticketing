@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>중앙 서버 수집창 모니터</title>
+<style>
+  * { box-sizing: border-box; font-family: "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  body { margin: 0; background: #0f1420; color: #e6e9f0; padding: 24px; }
+  h1 { font-size: 18px; color: #7fb2ff; margin-bottom: 4px; }
+  .sub { color: #8892a6; font-size: 13px; margin-bottom: 20px; }
+  .seat-card {
+    background: #1a2233; border: 1px solid #2a3350; border-radius: 10px;
+    padding: 16px; margin-bottom: 14px;
+  }
+  .seat-card.confirmed { border-color: #2f7d4a; }
+  .seat-card.pending { border-color: #a67c1f; }
+  .seat-header {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
+  }
+  .seat-id { font-size: 16px; font-weight: bold; }
+  .badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+  .badge.pending { background: #4a3a12; color: #ffcf6b; }
+  .badge.confirmed { background: #163d24; color: #7ee2a0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #2a3350; }
+  th { color: #8892a6; font-weight: normal; }
+  tr.winner { background: rgba(126, 226, 160, 0.12); }
+  tr.winner td:first-child::before { content: "🏆 "; }
+  .empty { color: #8892a6; padding: 30px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>중앙 서버 - 좌석별 수집창 실시간 모니터</h1>
+  <div class="sub">0.5초마다 자동 새로고침됩니다. (원본 타임스탬프가 가장 빠른 요청이 승자로 정렬되어 표시됩니다)</div>
+  <div id="container"></div>
+ 
+<script>
+async function refresh() {
+  const container = document.getElementById('container');
+  try {
+    const res = await fetch('/debug/windows');
+    const windows = await res.json();
+ 
+    if (windows.length === 0) {
+      container.innerHTML = '<div class="empty">아직 들어온 좌석 요청이 없습니다.</div>';
+      return;
+    }
+ 
+    container.innerHTML = windows.map(renderSeatCard).join('');
+  } catch (err) {
+    container.innerHTML = '<div class="empty">central 서버에 연결할 수 없습니다.</div>';
+  }
+}
+ 
+function renderSeatCard(w) {
+  // 실제 판정과 같은 기준으로 정렬해야 한다 — 서버는 보정된 시각(corrected_epoch_ms)으로
+  // 승자를 정하므로, 여기서 원본으로 정렬하면 화면의 1등과 실제 승자가 달라 보인다.
+  const sorted = [...w.buffer].sort((a, b) => a.corrected_epoch_ms - b.corrected_epoch_ms);
+  const winnerId = w.winner ? w.winner.request_id : sorted[0]?.request_id;
+
+  const rows = sorted.map(r => {
+    const isWinner = r.request_id === winnerId;
+    return `
+      <tr class="${isWinner ? 'winner' : ''}">
+        <td>${r.request_id.slice(0, 8)}</td>
+        <td>${r.pop_id}</td>
+        <td>${r.pop_arrival_epoch_ms}</td>
+      </tr>
+    `;
+  }).join('');
+ 
+  const badgeText = w.status === 'confirmed' ? '확정됨' : '대기 중 (아직 수집창 안 닫힘)';
+ 
+  return `
+    <div class="seat-card ${w.status}">
+      <div class="seat-header">
+        <span class="seat-id">좌석 ${w.seat_id}</span>
+        <span class="badge ${w.status}">${badgeText}</span>
+      </div>
+      <table>
+        <thead><tr><th>요청 ID</th><th>PoP</th><th>도착 시각 (epoch ms)</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+ 
+refresh();
+setInterval(refresh, 500);
+</script>
+</body>
+</html>

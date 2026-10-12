@@ -1,0 +1,31 @@
+[Unit]
+Description=Write chrony clock offset to a file for PoP containers
+Documentation=file:///usr/local/bin/chrony-offset-writer.sh
+# chrony가 떠 있어야 의미가 있는 서비스다. chronyd가 죽어도 이 서비스는 계속 돌면서
+# 파일을 갱신하지 않으므로(chronyc가 실패하면 OUT을 안 건드림), 컨테이너 쪽 age가
+# 자동으로 커져서 장애가 드러난다.
+# 서비스 이름이 배포판마다 다르다: Ubuntu/Debian은 chrony.service, RHEL계는 chronyd.service.
+After=chrony.service chronyd.service
+Wants=chrony.service
+
+[Service]
+Type=simple
+# /run/pop-clock 디렉토리를 systemd가 만들고 정리하게 한다.
+# tmpfs라 디스크를 건드리지 않고, 재부팅하면 사라진다 —
+# 재부팅 후 낡은 파일이 남아 "옛날 오프셋"을 신뢰하는 일이 없어서 이 편이 안전하다.
+RuntimeDirectory=pop-clock
+RuntimeDirectoryMode=0755
+# *** 이 줄이 없으면 PoP 컨테이너가 조용히 고장난다 (실측으로 확인) ***
+# systemd는 기본적으로 서비스가 멈출 때 RuntimeDirectory를 삭제하고, 다시 시작할 때
+# 새로 만든다. 그러면 디렉토리의 inode가 바뀐다(실측: 17637 -> 17881).
+# 컨테이너의 바인드 마운트는 마운트 시점의 inode를 계속 가리키므로, 수집기를 한 번만
+# 재시작해도 컨테이너는 새 오프셋 파일을 영원히 못 보게 된다. age가 계속 커져서
+# 감지는 되지만, 컨테이너를 재시작해야만 복구되는 상태에 빠진다.
+# preserve를 켜두면 디렉토리가 유지되어 마운트가 끊기지 않는다.
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/local/bin/chrony-offset-writer.sh /run/pop-clock/tracking.csv
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

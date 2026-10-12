@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>로그인 - DOON</title>
+<style>
+/* index/seat/payment 와 같은 규칙: style.css 를 쓰지 않고 자기 스타일을 들고 있는다. */
+* { box-sizing: border-box; }
+body { margin:0; background:#fafafa; color:#222;
+  font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-serif;
+  -webkit-font-smoothing:antialiased; }
+.brandbar { background:#fff; border-bottom:1px solid #eee; }
+.brandbar .inner { max-width:1120px; margin:0 auto; padding:14px 24px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.brandline { font-size:14px; color:#777; letter-spacing:-0.2px; }
+.brandline b { font-size:24px; font-weight:700; color:#111; letter-spacing:-0.5px; margin-right:8px; }
+.util { display:flex; align-items:center; gap:14px; font-size:13px; color:#777; }
+
+.wrap { max-width:420px; margin:0 auto; padding:44px 24px 80px; }
+.h1 { font-size:24px; font-weight:700; color:#111; letter-spacing:-0.6px;
+  text-align:center; margin:0 0 6px; }
+.sub { font-size:13px; color:#888; text-align:center; margin-bottom:28px; }
+
+.card { background:#fff; border:1px solid #e8e8e8; border-radius:8px; padding:24px 22px; }
+label { display:block; font-size:12.5px; color:#666; margin-bottom:6px; font-weight:700; }
+input[type=email], input[type=password] {
+  width:100%; padding:12px 13px; border:1px solid #ddd; border-radius:4px;
+  font-size:14px; font-family:inherit; margin-bottom:16px; background:#fff; color:#222; }
+input:focus { outline:none; border-color:#F5821F; }
+.btn { background:#F5821F; color:#fff; border:0; width:100%; padding:14px 0;
+  font-size:15.5px; font-weight:700; border-radius:3px; cursor:pointer;
+  font-family:inherit; letter-spacing:-0.3px; }
+.btn:hover { background:#DE7115; }
+.btn:disabled { background:#ccc; cursor:default; }
+.err { display:none; background:#FDECEA; border:1px solid #F5C6C0; color:#B3261E;
+  font-size:12.5px; padding:10px 12px; border-radius:4px; margin-bottom:16px; line-height:1.6; }
+.err.on { display:block; }
+
+.fpbox { margin-top:14px; border:1px solid #e8e8e8; border-radius:8px; background:#fff; }
+.fphead { display:flex; align-items:center; justify-content:space-between;
+  padding:13px 16px; cursor:pointer; font-size:12.5px; color:#555; }
+.fphead b { color:#111; font-weight:700; }
+.fpid { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px;
+  color:#B3560A; background:#FFF6EE; border:1px solid #F5D2AE;
+  border-radius:3px; padding:2px 7px; }
+.fpbody { display:none; border-top:1px solid #f0f0f0; padding:6px 16px 14px; }
+.fpbody.on { display:block; }
+.fprow { display:flex; font-size:11.5px; padding:5px 0; border-bottom:1px solid #f7f7f7; }
+.fprow:last-child { border-bottom:0; }
+.fprow .k { width:132px; flex-shrink:0; color:#999; }
+.fprow .v { flex:1; min-width:0; color:#444; word-break:break-all;
+  font-family:ui-monospace,Menlo,Consolas,monospace; }
+.note { font-size:11.5px; color:#999; line-height:1.75; margin-top:12px; }
+.note b { color:#666; }
+</style>
+</head>
+<body>
+
+<div class="brandbar">
+  <div class="inner">
+    <div class="brandline"><b>DOON</b>티켓팅에 공정을 담다. with KOREN</div>
+    <div class="util"><span id="popLabel">-</span></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="h1">로그인</div>
+  <div class="sub">예매를 진행하려면 로그인이 필요합니다</div>
+
+  <div class="card">
+    <div class="err" id="err"></div>
+
+    <label for="email">이메일</label>
+    <input type="email" id="email" autocomplete="username" placeholder="test@doon.kr">
+
+    <label for="pw">비밀번호</label>
+    <input type="password" id="pw" autocomplete="current-password" placeholder="비밀번호">
+
+    <button class="btn" id="loginBtn">로그인</button>
+  </div>
+
+  <!-- 심사/시연용: 어떤 값을 수집하는지 그대로 보여준다.
+       "몰래 수집한다"가 아니라 "이 값들로 기기를 구분한다"를 눈으로 확인시키는 화면이다. -->
+  <div class="fpbox">
+    <div class="fphead" id="fpHead">
+      <span>이 기기의 식별값 <b>device_fp</b></span>
+      <span class="fpid" id="fpId">계산 중...</span>
+    </div>
+    <div class="fpbody" id="fpBody"></div>
+  </div>
+
+  <div class="note">
+    로그인 시각·접속 지역·기기 식별값이 함께 기록됩니다.<br>
+    <b>같은 기기에서 다수 계정이 로그인</b>하거나 <b>생성 직후 계정이 예매를 시도</b>하는 등의
+    자동화 패턴을 판별하는 데 사용되며, 좌석 판정 순서에는 영향을 주지 않습니다.
+  </div>
+</div>
+
+<script>
+// ===========================================================================
+// device_fp - 기기 식별값
+// ---------------------------------------------------------------------------
+// 서버가 볼 수 없는 값들이라 브라우저에서 모아 보낸다.
+// 클라이언트가 조작할 수 있는 값이므로 "이 사람이 누구다"의 근거로는 쓰지 않는다.
+// 쓰임새는 딱 하나 - 같은 값이 여러 계정에서 반복되는지 보는 것이다.
+// 매크로는 보통 한 대(또는 동일 이미지의 컨테이너)에서 계정을 돌려쓰기 때문에
+// 이 값이 겹친다. 정상 사용자끼리 우연히 겹치는 일은 거의 없다.
+// ===========================================================================
+
+function canvasFingerprint() {
+  // 같은 그리기 명령이라도 GPU/드라이버/폰트 렌더링이 다르면 픽셀이 미세하게 달라진다.
+  try {
+    var c = document.createElement('canvas');
+    c.width = 240; c.height = 60;
+    var g = c.getContext('2d');
+    if (!g) return 'no-2d';
+    g.textBaseline = 'top';
+    g.font = '14px "Arial"';
+    g.fillStyle = '#F5821F';
+    g.fillRect(2, 2, 120, 20);
+    g.fillStyle = '#069';
+    g.fillText('DOON 공정 티켓팅 ✓ éè', 4, 24);
+    g.fillStyle = 'rgba(102,204,0,0.7)';
+    g.fillText('DOON 공정 티켓팅 ✓ éè', 6, 26);
+    g.globalCompositeOperation = 'multiply';
+    g.beginPath(); g.arc(60, 40, 18, 0, Math.PI * 2, true); g.closePath(); g.fill();
+    return c.toDataURL();
+  } catch (e) { return 'canvas-blocked'; }
+}
+
+function webglInfo() {
+  try {
+    var c = document.createElement('canvas');
+    var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+    if (!gl) return { vendor: 'no-webgl', renderer: 'no-webgl' };
+    var dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    return {
+      // 예: "Google Inc. (Apple)" / "ANGLE (Apple, Apple M2, OpenGL 4.1)"
+      vendor: dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR),
+      renderer: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+    };
+  } catch (e) { return { vendor: 'webgl-blocked', renderer: 'webgl-blocked' }; }
+}
+
+function collectSignals() {
+  var w = webglInfo();
+  var tz = '';
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+  return {
+    '화면 해상도':      screen.width + 'x' + screen.height + ' @' + (window.devicePixelRatio || 1) + 'x',
+    '색 심도':          (screen.colorDepth || 0) + 'bit',
+    '시간대':           tz + ' (UTC' + (new Date().getTimezoneOffset() > 0 ? '-' : '+') +
+                        Math.abs(new Date().getTimezoneOffset() / 60) + ')',
+    'CPU 논리 코어':    (navigator.hardwareConcurrency || 0) + '개',
+    '메모리':           (navigator.deviceMemory ? navigator.deviceMemory + 'GB' : '미제공'),
+    '플랫폼':           navigator.platform || '미제공',
+    '언어':             (navigator.languages || [navigator.language]).join(','),
+    '터치 지점':        (navigator.maxTouchPoints || 0) + '개',
+    'GPU 제조사':       String(w.vendor),
+    'GPU 모델':         String(w.renderer),
+    'Canvas 지문':      canvasFingerprint(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 해시
+// ---------------------------------------------------------------------------
+// *** 주의점 ***
+// crypto.subtle 은 "보안 컨텍스트"에서만 존재한다. https 이거나 localhost 여야 한다.
+// 우리는 http://<IP>:13198 로 접속하므로 브라우저에 따라 undefined 다.
+// 그래서 SHA-256 을 쓸 수 있으면 쓰고, 없으면 순수 JS 해시로 내려간다.
+// 어느 쪽이든 같은 기기면 같은 값이 나오는 것이 목적이고, 암호학적 강도는 필요 없다.
+function fnv1a64(str) {
+  // 32비트 두 개를 서로 다른 오프셋으로 돌려 64비트처럼 쓴다.
+  //
+  // *** Math.imul 을 쓰는 이유 ***
+  // JS 의 숫자는 배정밀도 실수라 곱셈 결과가 2^53 을 넘으면 하위 비트가 잘린다.
+  // h * 0x01000193 는 최대 2^56 이라 그냥 '*' 를 쓰면 아래 비트가 0 으로 뭉개지고,
+  // 해시 뒷자리가 전부 0 이 되어 서로 다른 기기가 같은 값으로 겹치기 시작한다.
+  // Math.imul 은 32비트 정수 곱셈을 정확히 계산해준다.
+  var h1 = 0x811c9dc5, h2 = 0x1b873593;
+  for (var i = 0; i < str.length; i++) {
+    var c = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ (c + i), 0x85ebca6b) >>> 0;
+    h2 = ((h2 << 13) | (h2 >>> 19)) >>> 0;   // 비트를 섞어 위·아래 자리 편중을 없앤다
+  }
+  var a = ('00000000' + (h1 >>> 0).toString(16)).slice(-8);
+  var b = ('00000000' + (h2 >>> 0).toString(16)).slice(-8);
+  return a + b;
+}
+
+async function computeFp(signals) {
+  var raw = Object.keys(signals).sort().map(function (k) {
+    return k + '=' + signals[k];
+  }).join('|');
+
+  if (window.crypto && window.crypto.subtle && window.crypto.subtle.digest) {
+    try {
+      var buf = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+      var arr = Array.from(new Uint8Array(buf));
+      return arr.map(function (b) { return ('0' + b.toString(16)).slice(-2); }).join('').slice(0, 16);
+    } catch (e) { /* 아래 폴백 */ }
+  }
+  return fnv1a64(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 화면
+// ---------------------------------------------------------------------------
+var SIGNALS = collectSignals();
+var DEVICE_FP = null;
+
+(function renderSignals() {
+  var body = document.getElementById('fpBody');
+  Object.keys(SIGNALS).forEach(function (k) {
+    var v = String(SIGNALS[k]);
+    // Canvas 지문은 수천 자라 앞부분만 보여준다.
+    if (k === 'Canvas 지문') v = v.slice(0, 64) + '... (' + v.length + '자)';
+    var row = document.createElement('div');
+    row.className = 'fprow';
+    row.innerHTML = '<div class="k"></div><div class="v"></div>';
+    row.querySelector('.k').textContent = k;
+    row.querySelector('.v').textContent = v;
+    body.appendChild(row);
+  });
+})();
+
+document.getElementById('fpHead').addEventListener('click', function () {
+  document.getElementById('fpBody').classList.toggle('on');
+});
+
+computeFp(SIGNALS).then(function (fp) {
+  DEVICE_FP = fp;
+  document.getElementById('fpId').textContent = fp;
+});
+
+// 접속한 PoP 를 상단에 표시 (다른 화면과 같은 규칙)
+fetch('/clock-offset').then(function (r) { return r.json(); }).then(function (d) {
+  var label = d.pop_id === 'pop-daejeon' ? '대전 PoP 접속'
+            : d.pop_id === 'pop-pangyo'  ? '판교 PoP 접속' : d.pop_id;
+  document.getElementById('popLabel').textContent = label;
+}).catch(function () {});
+
+// ---------------------------------------------------------------------------
+// 로그인
+// ---------------------------------------------------------------------------
+var errBox = document.getElementById('err');
+function showErr(msg) { errBox.textContent = msg; errBox.classList.add('on'); }
+function clearErr() { errBox.classList.remove('on'); }
+
+function returnTo() {
+  var q = new URLSearchParams(location.search).get('returnTo');
+  // 외부 사이트로 튕기지 않도록 같은 출처의 경로만 허용한다.
+  if (q && q.charAt(0) === '/' && q.charAt(1) !== '/') return q;
+  return '/index.html';
+}
+
+var btn = document.getElementById('loginBtn');
+
+async function doLogin() {
+  clearErr();
+  var email = document.getElementById('email').value.trim();
+  var pw = document.getElementById('pw').value;
+  if (!email || !pw) { showErr('이메일과 비밀번호를 입력해주세요.'); return; }
+
+  btn.disabled = true; btn.textContent = '로그인 중...';
+  try {
+    var res = await fetch('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, password: pw, device_fp: DEVICE_FP }),
+    });
+    var data = await res.json().catch(function () { return {}; });
+
+    if (!res.ok) {
+      showErr(data.detail || ('로그인에 실패했습니다 (HTTP ' + res.status + ')'));
+      btn.disabled = false; btn.textContent = '로그인';
+      return;
+    }
+
+    // 토큰은 브라우저에 보관한다. 서버는 세션을 조회하지 않으므로(무상태 검증)
+    // 이 값이 곧 신원 증명이다. 만료되면 다시 로그인하면 된다.
+    localStorage.setItem('doon_token', data.token);
+    localStorage.setItem('doon_account_id', data.account_id || '');
+    localStorage.setItem('doon_session_id', data.session_id || '');
+    localStorage.setItem('doon_email', email);
+    localStorage.setItem('doon_device_fp', DEVICE_FP || '');
+    localStorage.setItem('doon_expires_at', String(Date.now() + (data.expires_in || 7200) * 1000));
+
+    location.href = returnTo();
+  } catch (e) {
+    showErr('서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
+    btn.disabled = false; btn.textContent = '로그인';
+  }
+}
+
+btn.addEventListener('click', doLogin);
+['email', 'pw'].forEach(function (id) {
+  document.getElementById(id).addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') doLogin();
+  });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+# Grafana가 켜지자마자 이 폴더의 대시보드 JSON을 자동으로 읽어 등록한다.
+# updateIntervalSeconds 덕분에 JSON 파일만 바꿔도 10초 안에 대시보드가 갱신된다.
+apiVersion: 1
+
+providers:
+  - name: 'KOREN 판교 대시보드'
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

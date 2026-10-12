@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOON - 티켓팅에 공정을 담다. with KOREN</title>
+<style>
+/* 이 파일은 style.css 를 쓰지 않는다.
+   style.css 는 seat.html(좌석 그리드)과 공유되므로, 여기서 .header 같은
+   공용 클래스를 고치면 시연 영상의 주인공인 좌석 화면까지 같이 바뀐다.
+   그래서 index 전용 스타일을 이 안에 전부 담았다. */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #fff;
+  color: #222;
+  font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', '맑은 고딕', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+/* 상단 로고 — 파란 배경 띠를 없애고 글자만 남긴다.
+   DOON 을 부제보다 확실히 크게 두어 브랜드가 먼저 읽히게 한다. */
+.brandbar { border-bottom: 1px solid #eee; }
+.brandbar .wrap { padding-top: 22px; padding-bottom: 18px; }
+.brand-name { font-size: 32px; font-weight: 700; letter-spacing: -0.6px; color: #111; line-height: 1.1; }
+.brand-sub  { font-size: 13px; color: #777; margin-top: 4px; }
+
+.crumb { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #888; margin: 26px 0 10px; }
+.badge {
+  background: #F5821F; color: #fff; font-size: 11px;
+  padding: 3px 8px; border-radius: 2px; letter-spacing: -0.2px;
+}
+
+.titlerow { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.title { font-size: 28px; font-weight: 700; color: #111; letter-spacing: -0.8px; line-height: 1.3; }
+.share { color: #999; flex-shrink: 0; padding-top: 6px; cursor: pointer; }
+
+.meta {
+  font-size: 13px; color: #666; margin-top: 12px;
+  padding-bottom: 16px; border-bottom: 2px solid #333;
+}
+.meta .sep { color: #ddd; margin: 0 8px; }
+
+.detail { display: flex; gap: 30px; margin-top: 26px; align-items: flex-start; }
+.poster { width: 300px; flex-shrink: 0; border: 1px solid #e5e5e5; display: block; }
+.info { flex: 1; min-width: 0; font-size: 14px; }
+
+.row { display: flex; margin-bottom: 15px; }
+.row .k { width: 78px; flex-shrink: 0; color: #555; }
+.row .v { flex: 1; min-width: 0; color: #222; }
+
+.pricebox { background: #f5f5f5; padding: 16px 18px; }
+.pline { margin-bottom: 8px; }
+.pline .won { color: #e8342a; font-weight: 700; }
+.pfoot {
+  border-top: 1px solid #e0e0e0; margin-top: 6px; padding-top: 12px;
+  display: flex; align-items: center; gap: 12px; font-size: 12px; color: #888;
+  flex-wrap: wrap;
+}
+.more {
+  border: 1px solid #ccc; background: #fff; padding: 4px 10px;
+  font-size: 11px; color: #555; border-radius: 2px; cursor: pointer;
+  font-family: inherit;
+}
+
+.benefit { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: #333; }
+.benefit .item { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.benefit .bar { color: #ddd; }
+
+.bookwrap { border-top: 1px solid #e0e0e0; margin-top: 22px; padding-top: 20px; }
+.book {
+  background: #F5821F; color: #fff; border: 0;
+  padding: 14px 0; width: 210px; font-size: 16px; font-weight: 700;
+  border-radius: 2px; cursor: pointer; font-family: inherit; letter-spacing: -0.3px;
+}
+.book:hover { background: #DE7115; }
+.book:active { transform: translateY(1px); }
+
+@media (max-width: 820px) {
+  .detail { flex-direction: column; }
+  .poster { width: 100%; max-width: 340px; }
+}
+
+.brandbar .wrap { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+.topnav { display: flex; align-items: center; gap: 20px; padding-bottom: 4px; flex-wrap: wrap; }
+.topnav .menu { display: flex; align-items: center; gap: 20px; font-size: 18px; color: #333; }
+.topnav .menu span { cursor: pointer; }
+.topnav .menu span:hover { color: #F5821F; }
+.topnav .divider { width: 1px; height: 14px; background: #ddd; }
+.topnav .util { display: flex; align-items: center; gap: 16px; font-size: 15px; color: #777; }
+.topnav .util span { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.topnav .util span:hover { color: #333; }
+@media (max-width: 900px) { .topnav { width: 100%; justify-content: space-between; gap: 12px; } .topnav .menu { gap: 14px; font-size: 16px; flex-wrap: wrap; } }
+</style>
+</head>
+<body>
+
+<div class="brandbar">
+  <div class="wrap">
+    <div>
+      <div class="brand-name">DOON</div>
+      <div class="brand-sub">티켓팅에 공정을 담다. with KOREN</div>
+    </div>
+      <div class="topnav">
+        <div class="menu">
+          <span>콘서트</span><span>뮤지컬</span><span>연극</span><span>클래식</span><span>전시</span><span>스포츠</span><span>가족</span><span>어린이</span>
+        </div>
+        <div class="divider"></div>
+        <div class="util">
+          <span aria-label="검색"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>
+          <span>로그인</span>
+          <span aria-label="설정"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></span>
+        </div>
+      </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="crumb">
+    <span>콘서트 &gt; 국내가수</span>
+    <span class="badge">자동 예매 방지</span>
+  </div>
+
+  <div class="titlerow">
+    <div class="title">임영웅 : IM HERO TOUR 2026</div>
+    <svg class="share" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+      <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>
+    </svg>
+  </div>
+
+  <div class="meta">
+    <span id="showDate">--</span>
+    <span class="sep">|</span>
+    <span>인천 송도컨벤시아</span>
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="#e74c3c" style="vertical-align:-1px" aria-hidden="true">
+      <path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/>
+    </svg>
+  </div>
+
+  <div class="detail">
+    <img src="/img/imhero.jpg" alt="임영웅 : IM HERO TOUR 2026" class="poster">
+
+    <div class="info">
+      <div class="row"><div class="k">등급</div><div class="v">만 7세 이상</div></div>
+      <div class="row"><div class="k">관람시간</div><div class="v">총 150분</div></div>
+      <div class="row"><div class="k">출연</div><div class="v">임영웅</div></div>
+      <div class="row"><div class="k">잔여석</div><div class="v" id="seatCountText">확인 중...</div></div>
+
+      <div class="row">
+        <div class="k" style="padding-top:16px">가격</div>
+        <div class="v">
+          <div class="pricebox">
+            <div class="pline">P석 <span class="won">154,000</span>원</div>
+            <div class="pline">스탠딩석 <span class="won">143,000</span>원</div>
+            <div class="pline">R석 <span class="won">143,000</span>원</div>
+            <div class="pline">S석 <span class="won">121,000</span>원</div>
+            <div class="pline">A석 <span class="won">110,000</span>원</div>
+            <div class="pline">B석 <span class="won">99,000</span>원</div>
+            <div class="pline">C석 <span class="won">88,000</span>원</div>
+            <div class="pline">D석 <span class="won">77,000</span>원</div>
+            <div class="pfoot">
+              <span>할인 적용 시 최저가 53,900원 ~ 최고가 107,800원</span>
+              <button class="more" type="button">자세히</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:4px">
+        <div class="k">혜택</div>
+        <div class="v benefit">
+          <span class="item">사용가능쿠폰(1)
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+          <span class="bar">|</span>
+          <span class="item">무이자할부
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+          <span class="bar">|</span>
+          <span class="item">제휴카드할인
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+        </div>
+      </div>
+
+      <div class="bookwrap">
+        <button id="bookBtn" class="book" type="button">예매하기</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="height:60px"></div>
+</div>
+
+<script>
+// 공연일시는 오늘 ~ 내일로 매일 자동 갱신된다.
+// 시연 날짜가 바뀌어도 화면을 고칠 필요가 없게 하려는 것.
+(function () {
+  var f = function (d) {
+    var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '.' + p(d.getMonth() + 1) + '.' + p(d.getDate());
+  };
+  var today = new Date();
+  var tomorrow = new Date(today.getTime() + 86400000);
+  document.getElementById('showDate').textContent = f(today) + ' ~ ' + f(tomorrow);
+})();
+
+// 이 버튼은 타임스탬프를 측정하지 않는다 — 좌석 선택 화면으로 이동만 한다.
+// 실제로 시각을 재야 하는 순간은 "좌석을 고르고 예약하기를 누르는 순간"이고,
+// 그건 seat.html 에서 처리한다.
+document.getElementById('bookBtn').addEventListener('click', function () {
+  // 로그인하지 않았으면 로그인 화면으로 보내고, 끝나면 좌석 화면으로 돌아온다.
+  //  [FRONTAUTH_V1]
+  if (window.doonAuth && !window.doonAuth.token()) {
+    window.location.href = '/login.html?returnTo=' + encodeURIComponent('/seat.html');
+  } else {
+    window.location.href = '/seat.html';
+  }
+});
+
+// 잔여석: PoP -> central(DB) 순서로 실제 값을 받아온다.
+// central 이 재시작되어도 확정 수는 Postgres 에서 COUNT 해오므로 정확하다.
+// PoP 쪽에 1초 TTL 캐시가 있어서, 사용자가 아무리 많아도 central 까지 가는
+// 왕복은 초당 1회로 묶인다.
+var seatCountText = document.getElementById('seatCountText');
+
+function refreshSeatCount() {
+  fetch('/seat-count')
+    .then(function (res) { return res.json(); })
+    .then(function (data) {
+      if (data.remaining === null || data.remaining === undefined) {
+        seatCountText.textContent = '조회 실패 (서버 연결 확인 필요)';
+        return;
+      }
+      seatCountText.textContent = data.remaining + ' / ' + data.total + '석';
+    })
+    .catch(function () {
+      seatCountText.textContent = '조회 실패 (서버 연결 확인 필요)';
+    });
+}
+
+refreshSeatCount();
+setInterval(refreshSeatCount, 5000);
+</script>
+
+<!-- 로그인 상태 표시  [FRONTAUTH_V1] -->
+<script>
+(function () {
+  // 토큰 보관은 localStorage 를 쓴다.
+  // 서버가 세션을 조회하지 않는 무상태 검증이라, 이 토큰 자체가 신원 증명이다.
+  function tok() {
+    var t = localStorage.getItem('doon_token');
+    var exp = parseInt(localStorage.getItem('doon_expires_at') || '0', 10);
+    // 만료된 토큰을 들고 있으면 PoP 가 expired 로 판정한다.
+    // 화면 단에서 미리 정리해 "로그인한 줄 알았는데 신원이 안 붙는" 상태를 막는다.
+    if (t && exp && Date.now() > exp) { logout(true); return null; }
+    return t;
+  }
+  function logout(silent) {
+    ['doon_token','doon_account_id','doon_session_id','doon_email',
+     'doon_device_fp','doon_expires_at'].forEach(function (k) {
+      localStorage.removeItem(k);
+    });
+    if (!silent) location.reload();
+  }
+  // 다른 화면에서도 쓸 수 있게 전역으로 노출한다.
+  window.doonAuth = {
+    token: tok,
+    logout: logout,
+    email: function () { return localStorage.getItem('doon_email') || ''; },
+    require: function (returnTo) {
+      if (tok()) return true;
+      location.href = '/login.html?returnTo=' + encodeURIComponent(returnTo || location.pathname);
+      return false;
+    },
+  };
+
+  // 상단 유틸 영역에 로그인 상태를 그린다. 없으면 조용히 넘어간다.
+  var util = document.querySelector('.util');
+  if (!util) return;
+  var box = document.createElement('span');
+  box.style.cssText = 'display:inline-flex;align-items:center;gap:8px;font-size:13px;';
+  if (tok()) {
+    var who = document.createElement('span');
+    who.style.cssText = 'color:#B3560A;font-weight:700;';
+    who.textContent = window.doonAuth.email();
+    var out = document.createElement('a');
+    out.href = '#'; out.textContent = '로그아웃';
+    out.style.cssText = 'color:#999;text-decoration:none;';
+    out.addEventListener('click', function (e) { e.preventDefault(); logout(false); });
+    box.appendChild(who); box.appendChild(out);
+  } else {
+    var a = document.createElement('a');
+    a.href = '/login.html?returnTo=' + encodeURIComponent(location.pathname);
+    a.textContent = '로그인';
+    a.style.cssText = 'color:#777;text-decoration:none;';
+    box.appendChild(a);
+  }
+  util.appendChild(box);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>결제 - DOON</title>
+<style>
+/* index/seat 와 같은 규칙: style.css 를 쓰지 않고 자기 스타일을 들고 있는다. */
+* { box-sizing: border-box; }
+body { margin:0; background:#fafafa; color:#222;
+  font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-serif;
+  -webkit-font-smoothing:antialiased; }
+.wrap { max-width:720px; margin:0 auto; padding:0 24px; }
+.brandbar { background:#fff; border-bottom:1px solid #eee; }
+.brandbar .inner { max-width:1120px; margin:0 auto; padding:14px 24px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.brandline { font-size:14px; color:#777; letter-spacing:-0.2px; }
+.brandline b { font-size:24px; font-weight:700; color:#111; letter-spacing:-0.5px; margin-right:8px; }
+.util { display:flex; align-items:center; gap:14px; font-size:13px; color:#777; }
+.crumb { display:flex; align-items:center; gap:6px; font-size:11px; color:#999; padding:14px 0 12px; }
+.badge { background:#F5821F; color:#fff; font-size:10px; padding:2px 6px; border-radius:2px; }
+.h1 { font-size:22px; font-weight:700; color:#111; letter-spacing:-0.5px;
+  padding-bottom:14px; border-bottom:2px solid #333; margin-bottom:20px; }
+.card { background:#fff; border:1px solid #e8e8e8; border-radius:8px; padding:18px 20px; margin-bottom:12px; }
+.ct { font-size:13px; font-weight:700; color:#111; margin-bottom:14px; }
+.row { display:flex; font-size:13.5px; margin-bottom:11px; }
+.row:last-child { margin-bottom:0; }
+.row .k { width:92px; flex-shrink:0; color:#666; }
+.row .v { flex:1; min-width:0; color:#222; }
+.row .v.pick { color:#F5821F; font-weight:700; }
+.total { border-top:1px solid #eee; margin-top:14px; padding-top:14px;
+  display:flex; justify-content:space-between; align-items:baseline; }
+.total .lbl { font-size:14px; color:#333; font-weight:700; }
+.total .amt { font-size:24px; font-weight:700; color:#F5821F; letter-spacing:-0.5px; }
+.pay { display:flex; gap:8px; flex-wrap:wrap; }
+.pay .opt { flex:1; min-width:120px; border:1px solid #e2e2e2; border-radius:4px;
+  padding:12px 10px; text-align:center; font-size:13px; color:#666; cursor:pointer; }
+.pay .opt.on { border-color:#F5821F; background:#FFF6EE; color:#B3560A; font-weight:700; }
+.agree { display:flex; align-items:center; gap:8px; font-size:12.5px; color:#555; cursor:pointer; }
+.agree .box { width:15px; height:15px; border:1px solid #ccc; border-radius:3px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; color:#fff; font-size:10px; }
+.agree.on .box { background:#F5821F; border-color:#F5821F; }
+.btn { background:#F5821F; color:#fff; border:0; width:100%; padding:15px 0;
+  font-size:16px; font-weight:700; border-radius:3px; cursor:pointer;
+  font-family:inherit; letter-spacing:-0.3px; margin-top:4px; }
+.btn:hover { background:#DE7115; }
+.btn:disabled { background:#ccc; cursor:default; }
+.proof { font-size:11.5px; color:#888; line-height:1.7; word-break:break-all; }
+.proof b { color:#555; font-weight:700; }
+.done { text-align:center; padding:36px 20px; }
+.done .mark { width:52px; height:52px; border-radius:50%; background:#F5821F; color:#fff;
+  display:flex; align-items:center; justify-content:center; font-size:26px; margin:0 auto 16px; }
+.done .t { font-size:19px; font-weight:700; color:#111; margin-bottom:8px; }
+.done .s { font-size:13px; color:#777; margin-bottom:22px; }
+.done .no { display:inline-block; background:#FFF6EE; color:#B3560A; border:1px solid #F5821F;
+  border-radius:4px; padding:9px 16px; font-size:14px; font-weight:700; letter-spacing:0.3px; }
+.home { display:inline-block; margin-top:22px; font-size:13px; color:#777;
+  border:1px solid #ddd; border-radius:3px; padding:9px 20px; text-decoration:none; }
+.home:hover { color:#333; border-color:#bbb; }
+</style>
+</head>
+<body>
+
+<div class="brandbar">
+  <div class="inner">
+    <div class="brandline"><b>DOON</b>티켓팅에 공정을 담다. with KOREN</div>
+    <div class="util">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <span>로그인</span>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="crumb">
+    <span>콘서트 &gt; 국내가수 &gt; 좌석 선택 &gt; 결제</span>
+    <span class="badge">자동 예매 방지</span>
+  </div>
+
+  <div id="payView">
+    <div class="h1">결제</div>
+
+    <div class="card">
+      <div class="ct">예매 정보</div>
+      <div class="row"><div class="k">공연</div><div class="v">임영웅 : IM HERO TOUR 2026</div></div>
+      <div class="row"><div class="k">일시</div><div class="v" id="showDate">-</div></div>
+      <div class="row"><div class="k">장소</div><div class="v">인천 송도컨벤시아</div></div>
+      <div class="row"><div class="k">좌석</div><div class="v pick" id="seatTxt">-</div></div>
+      <div class="row"><div class="k">매수</div><div class="v">1매</div></div>
+    </div>
+
+    <div class="card">
+      <div class="ct">결제 금액</div>
+      <div class="row"><div class="k" id="gradeK">-</div><div class="v" id="priceTxt">-</div></div>
+      <div class="row"><div class="k">예매 수수료</div><div class="v">2,000원</div></div>
+      <div class="total"><span class="lbl">총 결제금액</span><span class="amt" id="totalTxt">-</span></div>
+    </div>
+
+    <div class="card">
+      <div class="ct">결제 수단</div>
+      <div class="pay">
+        <div class="opt on" data-m="신용카드">신용카드</div>
+        <div class="opt" data-m="간편결제">간편결제</div>
+        <div class="opt" data-m="무통장입금">무통장입금</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ct">공정 판정 근거</div>
+      <div class="proof">
+        이 좌석은 전국 PoP에서 들어온 요청을 같은 기준 시각으로 비교해 확정되었습니다.<br>
+        요청 ID <b id="reqTxt">-</b><br>
+        접수 지역 <b id="popTxt">확인 중...</b> &nbsp;·&nbsp; 시계 오차 <b id="offTxt">-</b><br>
+        판정 서버 <b>판교 중앙서버</b>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="agree on" id="agree"><span class="box">&check;</span>예매 조건 및 취소 규정에 동의합니다</div>
+    </div>
+
+    <button class="btn" id="payBtn">결제하기</button>
+    <div style="height:60px"></div>
+  </div>
+
+  <div id="doneView" style="display:none;">
+    <div class="card done">
+      <div class="mark">&check;</div>
+      <div class="t">예매가 완료되었습니다</div>
+      <div class="s" id="doneSeat">-</div>
+      <div class="no" id="bookNo">-</div>
+      <div><a class="home" href="/index.html">처음으로</a></div>
+    </div>
+    <div style="height:60px"></div>
+  </div>
+</div>
+
+<script>
+// 좌석 화면에서 넘겨준 값을 읽는다: /payment.html?seat_id=C-4-5&request_id=...
+var q = new URLSearchParams(location.search);
+var seat = q.get('seat_id') || '-';
+var reqId = q.get('request_id') || '-';
+
+document.getElementById('seatTxt').textContent = seat;
+document.getElementById('reqTxt').textContent = reqId;
+
+// 공연일시는 index/seat 과 같은 규칙으로 오늘 날짜를 쓴다.
+(function () {
+  var DOW = ['일','월','화','수','목','금','토'];
+  var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+  var d = new Date();
+  document.getElementById('showDate').textContent =
+    d.getFullYear() + '.' + p(d.getMonth()+1) + '.' + p(d.getDate()) +
+    '(' + DOW[d.getDay()] + ') 19:00';
+})();
+
+// 좌석 등급: 1F(A~E)는 R석, 2F(F~J)는 S석.
+// seat.html 의 구역 배치와 같은 규칙이라 화면 사이에 값이 어긋나지 않는다.
+var zone = (seat || '').charAt(0);
+var isFirstFloor = 'ABCDE'.indexOf(zone) >= 0;
+var grade = isFirstFloor ? 'R석' : 'S석';
+var price = isFirstFloor ? 143000 : 121000;
+var FEE = 2000;
+var won = function (n) { return n.toLocaleString('ko-KR') + '원'; };
+
+document.getElementById('gradeK').textContent = grade;
+document.getElementById('priceTxt').textContent = won(price);
+document.getElementById('totalTxt').textContent = won(price + FEE);
+
+// 접속 지역과 시계 오차: seat.html 과 같은 /clock-offset 을 쓴다.
+// 결제 화면까지 "어느 지역에서 접수됐는지"가 따라와야 근거가 이어진다.
+fetch('/clock-offset').then(function (r) { return r.json(); }).then(function (d) {
+  var label = d.pop_id === 'pop-daejeon' ? '대전 PoP'
+            : d.pop_id === 'pop-pangyo'  ? '판교 PoP' : d.pop_id;
+  document.getElementById('popTxt').textContent = label;
+  var ms = Number(d.clock_offset_ms);
+  document.getElementById('offTxt').textContent = (ms >= 0 ? '+' : '') + ms.toFixed(3) + ' ms';
+}).catch(function () {
+  document.getElementById('popTxt').textContent = '-';
+});
+
+// 결제 수단 선택 (표시만, 실제 결제는 없음)
+document.querySelectorAll('.pay .opt').forEach(function (el) {
+  el.addEventListener('click', function () {
+    document.querySelectorAll('.pay .opt').forEach(function (o) { o.classList.remove('on'); });
+    el.classList.add('on');
+  });
+});
+
+var agree = document.getElementById('agree');
+var payBtn = document.getElementById('payBtn');
+agree.addEventListener('click', function () {
+  agree.classList.toggle('on');
+  payBtn.disabled = !agree.classList.contains('on');
+});
+
+payBtn.addEventListener('click', function () {
+  payBtn.disabled = true;
+  payBtn.textContent = '결제 처리 중...';
+  setTimeout(function () {
+    // 예매번호: 좌석과 시각으로 만든 표시용 값. 실제 결제/발권 연동은 범위 밖.
+    var no = 'DOON-' + Date.now().toString(36).toUpperCase().slice(-6) + '-' + seat;
+    document.getElementById('doneSeat').textContent = '임영웅 : IM HERO TOUR 2026  ·  ' + seat;
+    document.getElementById('bookNo').textContent = no;
+    document.getElementById('payView').style.display = 'none';
+    document.getElementById('doneView').style.display = 'block';
+    window.scrollTo(0, 0);
+  }, 900);
+});
+</script>
+
+<!-- 로그인 상태 표시  [FRONTAUTH_V1] -->
+<script>
+(function () {
+  // 토큰 보관은 localStorage 를 쓴다.
+  // 서버가 세션을 조회하지 않는 무상태 검증이라, 이 토큰 자체가 신원 증명이다.
+  function tok() {
+    var t = localStorage.getItem('doon_token');
+    var exp = parseInt(localStorage.getItem('doon_expires_at') || '0', 10);
+    // 만료된 토큰을 들고 있으면 PoP 가 expired 로 판정한다.
+    // 화면 단에서 미리 정리해 "로그인한 줄 알았는데 신원이 안 붙는" 상태를 막는다.
+    if (t && exp && Date.now() > exp) { logout(true); return null; }
+    return t;
+  }
+  function logout(silent) {
+    ['doon_token','doon_account_id','doon_session_id','doon_email',
+     'doon_device_fp','doon_expires_at'].forEach(function (k) {
+      localStorage.removeItem(k);
+    });
+    if (!silent) location.reload();
+  }
+  // 다른 화면에서도 쓸 수 있게 전역으로 노출한다.
+  window.doonAuth = {
+    token: tok,
+    logout: logout,
+    email: function () { return localStorage.getItem('doon_email') || ''; },
+    require: function (returnTo) {
+      if (tok()) return true;
+      location.href = '/login.html?returnTo=' + encodeURIComponent(returnTo || location.pathname);
+      return false;
+    },
+  };
+
+  // 상단 유틸 영역에 로그인 상태를 그린다. 없으면 조용히 넘어간다.
+  var util = document.querySelector('.util');
+  if (!util) return;
+  var box = document.createElement('span');
+  box.style.cssText = 'display:inline-flex;align-items:center;gap:8px;font-size:13px;';
+  if (tok()) {
+    var who = document.createElement('span');
+    who.style.cssText = 'color:#B3560A;font-weight:700;';
+    who.textContent = window.doonAuth.email();
+    var out = document.createElement('a');
+    out.href = '#'; out.textContent = '로그아웃';
+    out.style.cssText = 'color:#999;text-decoration:none;';
+    out.addEventListener('click', function (e) { e.preventDefault(); logout(false); });
+    box.appendChild(who); box.appendChild(out);
+  } else {
+    var a = document.createElement('a');
+    a.href = '/login.html?returnTo=' + encodeURIComponent(location.pathname);
+    a.textContent = '로그인';
+    a.style.cssText = 'color:#777;text-decoration:none;';
+    box.appendChild(a);
+  }
+  util.appendChild(box);
+})();
+</script>
+</body>
+</html>

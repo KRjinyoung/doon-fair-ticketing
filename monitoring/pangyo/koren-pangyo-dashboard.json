@@ -1,0 +1,1798 @@
+{
+  "id": null,
+  "uid": "koren-pangyo-central",
+  "title": "DOON 판교 중앙서버 - 실시간 관제",
+  "description": "PoP 요청 접수 → Kafka → 중앙 판정 → Postgres 확정 → 전파",
+  "tags": [
+    "koren",
+    "pangyo",
+    "central",
+    "ticketing"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 3,
+  "refresh": "1s",
+  "time": {
+    "from": "now-5m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "1s",
+      "2s",
+      "5s",
+      "10s",
+      "30s",
+      "1m"
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "① 지금 이 순간",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "확정 좌석",
+      "description": "Postgres에 실제로 기록된 확정 좌석 수. 서버가 재시작돼도 유지되는 값.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "expr": "sum(central_confirmed_seats_db)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "잔여석",
+      "description": "전체 608석 중 아직 안 팔린 좌석",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 5,
+        "y": 1
+      },
+      "targets": [
+        {
+          "expr": "608 - sum(central_confirmed_seats_db)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 600
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "경쟁 중 좌석",
+      "description": "지금 수집창이 열려 있어 승부가 진행 중인 좌석 수",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 10,
+        "y": 1
+      },
+      "targets": [
+        {
+          "expr": "sum(central_pending_seats)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "DB 풀 대기 타임아웃",
+      "description": "커넥션 풀이 가득 차 대기하다 실패한 횟수. 0 이 아니면 풀을 늘려야 한다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 14,
+        "y": 1
+      },
+      "targets": [
+        {
+          "expr": "sum(central_db_acquire_timeouts_total)",
+          "legendFormat": "타임아웃",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 23,
+      "type": "stat",
+      "title": "대전 지표 수신",
+      "description": "대전 PoP가 자기 지표를 판교 Pushgateway로 마지막으로 밀어 넣은 뒤 흐른 시간(초). 판교->대전 방향이 막혀 있어 Prometheus가 대전을 직접 긁을 수 없으므로, 대전이 5초마다 밀어 넣는다. 이 값이 30초를 넘으면 중계기(13091)나 push 루프가 죽은 것이고, 그 순간부터 대시보드의 대전 지표는 전부 과거값이다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 19,
+        "y": 1
+      },
+      "targets": [
+        {
+          "expr": "time() - max(push_time_seconds{job=\"pop-daejeon\"})",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "instant": false
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 120
+              }
+            ]
+          },
+          "noValue": "N/A"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "② 요청 흐름과 좌석 경쟁",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "요청 처리율 (건/초)",
+      "description": "각 PoP가 접수한 양, 중앙이 판정한 양, 결과가 전파된 양. 세 선이 겹쳐 흐르면 병목이 없는 것.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (pop_id) (rate(pop_seat_requests_total[$__rate_interval]))",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "① {{pop_id}} 접수"
+        },
+        {
+          "expr": "sum(rate(central_kafka_consumed_total[$__rate_interval]))",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "② 중앙 소비"
+        },
+        {
+          "expr": "sum(rate(central_kafka_published_total[$__rate_interval]))",
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "③ 좌석상태 전파"
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "좌석당 경쟁자 수",
+      "description": "좌석 하나를 두고 동시에 경쟁한 사람 수. 상위 1%가 치솟으면 인기 좌석에 극단적으로 몰린다는 뜻.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 7,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum(rate(central_competitors_per_seat_bucket[30s])) by (le))",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "중앙값"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(central_competitors_per_seat_bucket[30s])) by (le))",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "상위 5%"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(central_competitors_per_seat_bucket[30s])) by (le))",
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "상위 1%"
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "③ 판정 결과 — 누가 얼마 차이로 이겼나",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "승자와 2위의 시간 차이",
+      "description": "좌석 하나를 두고 1등과 2등이 얼마나 아슬아슬했는지. 이 값이 왼쪽 'PoP 간 최대 시계 차이'보다 크면 판정이 시계가 아니라 실제 도착 순서로 갈렸다는 뜻이다. 1ms 미만이면 Grafana가 µs로 자동 환산해서 보여준다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum(rate(central_winner_margin_ms_bucket[30s])) by (le))",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "중앙값"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(central_winner_margin_ms_bucket[30s])) by (le))",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "상위 5%"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(central_winner_margin_ms_bucket[30s])) by (le))",
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "상위 1%"
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 3,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 29,
+      "type": "timeseries",
+      "title": "지역별 낙찰 좌석 수 ← 공정성 결과",
+      "description": "각 PoP 가 확보한 좌석 수. 두 지역이 비슷하면 접속 지역이 결과에 영향을 주지 않았다는 뜻이다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "count by (winner_pop_id) (central_confirmed_seat_detail)",
+          "legendFormat": "{{winner_pop_id}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "④ 공정성 근거 — 지역 간 시계 오차",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "panels": []
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "PoP별 클럭 오프셋 (µs)",
+      "description": "각 PoP 호스트 시계가 공통 기준 NTP 서버(121.134.215.104) 대비 얼마나 어긋나 있는지. chrony가 필터링한 추정치를 호스트가 5초마다 파일로 내려주고 PoP가 읽어서 보고한다. 양수면 그 PoP 시계가 느리다는 뜻이고, 중앙서버는 판정 시 이 값을 도착 시각에 더해 보정한다. 0을 중심으로 ±수십 µs 안에서 흔들리는 것이 정상이며, 한 PoP만 0.0에 평평하게 붙어 있으면 그 PoP가 오프셋 파일을 못 읽고 있다는 신호다(마운트 누락).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 14,
+        "x": 0,
+        "y": 25
+      },
+      "targets": [
+        {
+          "expr": "pop_clock_offset_ms * 1000",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "{{pop_id}}"
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "µs",
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true,
+            "axisSoftMin": -50,
+            "axisSoftMax": 50
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "PoP 간 최대 시계 차이 (µs)  ← 공정성 지표",
+      "description": "전국 PoP 중 시계가 가장 빠른 곳과 가장 느린 곳의 격차(max−min). 좌석 판정은 여러 지역의 도착 시각을 한 줄로 세우는 일이므로, 편향을 만들 수 있는 건 각 PoP의 절대 오차가 아니라 바로 이 '격차'다(모든 PoP에 똑같이 걸리는 오차는 비교에서 상쇄된다). 이 값이 위쪽 '승자와 2위의 시간 차이'보다 훨씬 작아야 판정을 신뢰할 수 있다. PoP가 몇 개로 늘어나도 이 쿼리는 그대로 전체의 폭을 재며, 어느 지역이 튀는지는 왼쪽 'PoP별 클럭 오프셋'에서 확인한다. chrony 도입 전에는 이 값을 잴 수단조차 없었고(HTTP 왕복 측정 노이즈 13ms), 지금은 모든 PoP가 같은 NTP 서버를 보므로 수십 µs 수준이다. PoP가 하나만 보고 중이면 max=min이라 0으로 보이므로, 지표 수신 상태를 함께 봐야 한다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 10,
+        "x": 14,
+        "y": 25
+      },
+      "targets": [
+        {
+          "expr": "(max(pop_clock_offset_ms) - min(pop_clock_offset_ms)) * 1000",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "최대 격차 (max−min)"
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "µs",
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 25,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true,
+            "axisSoftMax": 100
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#EAB839",
+                "value": 500
+              },
+              {
+                "color": "red",
+                "value": 2000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "⑤ Postgres 부하",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "panels": []
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "활성 커넥션 수",
+      "description": "앱 풀(max 5)에 계속 붙어 있으면 커넥션이 병목이라 pgbouncer 도입을 검토할 시점.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 34
+      },
+      "targets": [
+        {
+          "expr": "pg_stat_database_numbackends{datname=\"ticketing\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "DB 활성 커넥션"
+        },
+        {
+          "expr": "central_db_pool_size",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "앱 풀 전체"
+        },
+        {
+          "expr": "central_db_pool_size - central_db_pool_idle",
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "앱 풀 사용 중"
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "DB 쓰기 지연 (ms)",
+      "description": "좌석 확정 INSERT 소요 시간. 확정 이벤트는 이 쓰기가 끝나야 발행되므로 여기가 느려지면 전파 전체가 밀린다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 34
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(central_db_write_duration_seconds_bucket[$__rate_interval])) by (le)) * 1000",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(central_db_write_duration_seconds_bucket[$__rate_interval])) by (le)) * 1000",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "p99"
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "트랜잭션 처리율 (TPS)",
+      "description": "초당 커밋/롤백 수. 롤백이 늘면 충돌이나 오류가 나고 있는 것.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 34
+      },
+      "targets": [
+        {
+          "expr": "rate(pg_stat_database_xact_commit{datname=\"ticketing\"}[$__rate_interval])",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "커밋"
+        },
+        {
+          "expr": "rate(pg_stat_database_xact_rollback{datname=\"ticketing\"}[$__rate_interval])",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "legendFormat": "롤백"
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 17,
+      "type": "gauge",
+      "title": "DB 캐시 히트율",
+      "description": "읽기 요청 중 메모리에서 바로 해결된 비율. 99% 이상이면 건강.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 42
+      },
+      "targets": [
+        {
+          "expr": "clamp_max(100 * sum(pg_stat_database_blks_hit{datname=\"ticketing\"}) / clamp_min(sum(pg_stat_database_blks_hit{datname=\"ticketing\"}) + sum(pg_stat_database_blks_read{datname=\"ticketing\"}), 1), 100)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 90
+              },
+              {
+                "color": "green",
+                "value": 99
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 18,
+      "type": "gauge",
+      "title": "앱 커넥션 풀 사용률",
+      "description": "asyncpg 풀에서 실제로 쓰이고 있는 커넥션 비율. 100%에 계속 붙어 있으면 풀 크기를 늘려야 한다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 42
+      },
+      "targets": [
+        {
+          "expr": "100 * (central_db_pool_size - central_db_pool_idle) / clamp_min(central_db_pool_size, 1)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 60
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 19,
+      "type": "row",
+      "title": "⑥ 확정 좌석 상세",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 49
+      },
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "어떤 좌석을 어떤 PoP가 가져갔나",
+      "description": "좌석별 낙찰 PoP. 특정 PoP만 계속 이기면 지역 간 지연 차이가 판정에 편향을 준다는 신호.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 50
+      },
+      "targets": [
+        {
+          "expr": "central_confirmed_seat_detail",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          },
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ]
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "job": true,
+              "instance": true,
+              "Value": true
+            },
+            "renameByName": {
+              "seat_id": "좌석",
+              "winner_pop_id": "낙찰 PoP"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "row",
+      "title": "⑦ 봇 탐지 — 엣지 1차 필터",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 59
+      },
+      "panels": []
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "요청 판정 비율 (건/초)",
+      "description": "PoP 엣지가 검사한 요청 중 봇으로 판정된 비율. 기본은 monitor 모드라 판정만 하고 통과시키므로, '봇 판정'선이 올라가도 실제 서비스에는 영향이 없다. 우리 부하 테스트가 curl 이라 봇으로 잡히는 것이 정상이며, 그 자체가 필터가 살아 있다는 증거다. 시연에서 BOT_FILTER_MODE=enforce 로 올리면 '실제 차단'선이 '봇 판정'선을 따라 올라온다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 13,
+        "x": 0,
+        "y": 60
+      },
+      "targets": [
+        {
+          "expr": "sum by (pop_id) (rate(pop_bot_evaluated_total[$__rate_interval]))",
+          "legendFormat": "① 검사 {{pop_id}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        },
+        {
+          "expr": "sum by (pop_id) (rate(pop_bot_flagged_total[$__rate_interval]))",
+          "legendFormat": "② 봇 판정 {{pop_id}}",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        },
+        {
+          "expr": "sum by (pop_id) (rate(pop_bot_blocked_total[$__rate_interval]))",
+          "legendFormat": "③ 실제 차단 {{pop_id}}",
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        },
+        {
+          "expr": "sum by (pop_id) (rate(pop_bot_synthetic_total[$__rate_interval]))",
+          "legendFormat": "④ 합성 트래픽 {{pop_id}}",
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 26,
+      "type": "timeseries",
+      "title": "판정 사유별 분포 (건/초)",
+      "description": "무엇 때문에 봇으로 봤는지.\n  rate_limit        10초에 30건 초과 — 취소표 폴링 봇의 전형\n  abnormal_headers  User-Agent 에 스크립트 흔적이 있거나 Accept-Language 누락\n  blocked_ip        앞서 과속해 차단 목록에 오른 IP (1시간 뒤 자동 만료)\n정상 사용자 트래픽에서 abnormal_headers 가 계속 나오면 오탐을 의심해야 한다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 11,
+        "x": 13,
+        "y": 60
+      },
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(pop_bot_flagged_total[$__rate_interval]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 40,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 27,
+      "type": "timeseries",
+      "title": "필터 처리 시간 (µs)  ← 판정 시각에 얹히는 비용",
+      "description": "1차 필터 자체가 소비하는 시간. 이 필터는 좌석 도착 타임스탬프가 찍히기 직전에 돌기 때문에, 여기 걸리는 시간이 그대로 판정 시각에 더해진다. 모든 PoP에서 같은 코드가 돌므로 이 비용은 전 지역에 동일하게 붙어 비교에서 상쇄되지만, 한 지역만 튀면 지역 편향이 생기므로 항상 관측한다. 우리 시계 오차(수십 µs)와 같은 자릿수인지 확인하는 것이 핵심.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 13,
+        "x": 0,
+        "y": 68
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le, pop_id) (rate(pop_bot_filter_duration_seconds_bucket[$__rate_interval]))) * 1000000",
+          "legendFormat": "중앙값 {{pop_id}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, pop_id) (rate(pop_bot_filter_duration_seconds_bucket[$__rate_interval]))) * 1000000",
+          "legendFormat": "상위 5% {{pop_id}}",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "µs",
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 28,
+      "type": "timeseries",
+      "title": "추적 중인 IP / 차단 목록",
+      "description": "메모리에 들고 있는 상태의 크기. 원본 모듈은 IP 기록을 지우지 않아 시간이 지날수록 무한히 커졌는데, 10분 유휴 IP 정리와 1시간 차단 만료를 넣었다. '추적 IP'가 계속 우상향하면 청소가 안 도는 것이고, '차단 IP'가 부하 테스트 후에도 안 줄면 만료가 안 걸린 것이다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 11,
+        "x": 13,
+        "y": 68
+      },
+      "targets": [
+        {
+          "expr": "pop_bot_tracked_ips",
+          "legendFormat": "추적 IP {{pop_id}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        },
+        {
+          "expr": "pop_bot_blocked_ips",
+          "legendFormat": "차단 IP {{pop_id}}",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

@@ -21,11 +21,16 @@ SEATS=$($DC exec -T postgres psql -U ticketing -d ticketing -tAc \
 N=$(printf '%s\n' "$SEATS" | grep -c . || true)
 echo "[1/4] 확정 좌석 ${N}석"
 
-echo "[2/4] 중앙 DB 비우기"
+echo "[2/4] central 정지 후 중앙 DB 와 Redis 비우기"
+# STATE_BACKEND=redis 이면 확정 기록(sw:{seat}:c), 열린 창, DB 반영 대기 Stream 이
+# Redis 에 남아 있어 DB 만 비우면 좌석이 계속 확정으로 보인다.
+# central 을 먼저 멈춰야 DB 반영 소비자가 지운 좌석을 다시 쓰지 않는다.
+$DC stop central >/dev/null 2>&1
 $DC exec -T postgres psql -U ticketing -d ticketing -c "TRUNCATE confirmed_seats;" >/dev/null 2>&1
+$DC exec -T redis sh -c "redis-cli --scan --pattern 'sw:*' | xargs -r -n 500 redis-cli DEL" >/dev/null 2>&1
 
-echo "[3/4] central 재시작 (메모리 seat_windows 비우기)"
-$DC restart central >/dev/null 2>&1
+echo "[3/4] central 시작 (메모리 seat_windows 비우기)"
+$DC start central >/dev/null 2>&1
 for i in $(seq 1 25); do curl -s -m 2 localhost:10001/admin/window >/dev/null 2>&1 && break; sleep 1; done
 
 if [ "$N" -gt 0 ]; then

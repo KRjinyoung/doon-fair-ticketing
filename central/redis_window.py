@@ -33,8 +33,12 @@ from typing import Iterable, Optional
 import redis.asyncio as aioredis
 from redis.exceptions import NoScriptError
 
+# [REDIS_WINDOW_V2]  (Step 2: DB 앞단 Stream 버퍼 + 방송 대기 목록 추가)
 PREFIX = "sw"
 OPEN_KEY = f"{PREFIX}:open"
+STREAM_KEY = f"{PREFIX}:confirm:stream"      # 확정 결과 -> DB 반영 대기열 (Redis Stream)
+GROUP = "db-writer"                          # 이 Stream 을 읽는 소비자 그룹
+UNBROADCAST_KEY = f"{PREFIX}:unbroadcast"    # 확정은 됐지만 seat-status 방송이 확인되지 않은 좌석 ZSET(score=확정 시각 ms)
 
 
 def k_confirmed(seat_id: str) -> str:
@@ -103,6 +107,19 @@ local val = '{"confirmed_at":"' .. ARGV[3] .. '","total":' .. string.format('%d'
         .. ',"winner":' .. top[1] .. ',"top":[' .. table.concat(top, ',') .. ']}'
 redis.call('SET', KEYS[1], val)
 redis.call('DEL', KEYS[2], KEYS[3])
+-- Step 2: ARGV[4]=='1' 이면 같은 스크립트 안에서 (확정 키 기록 + DB 반영 큐 적재 + 방송 대기 등록)을
+-- 한꺼번에 한다. 셋 중 일부만 남는 상태가 생기지 않는다.
+if ARGV[4] == '1' then
+  local w = cjson.decode(top[1])
+  redis.call('XADD', KEYS[5], '*',
+             'seat', ARGV[1],
+             'rid', tostring(w.request_id),
+             'pop', tostring(w.pop_id),
+             'ts', string.format('%.17g', w.corrected_epoch_ms),
+             'at', ARGV[3])
+  local t = redis.call('TIME')
+  redis.call('ZADD', KEYS[6], t[1] * 1000 + math.floor(t[2] / 1000), ARGV[1])
+end
 return val
 """
 
@@ -196,18 +213,22 @@ class RedisWindowStore:
         return out
 
     # ------------------------------------------------------------------ 마감
-    async def close_window(self, seat_id: str, confirmed_at: str) -> Optional[dict]:
+    async def close_window(self, seat_id: str, confirmed_at: str, buffer: bool = False) -> Optional[dict]:
         """
         창을 닫고 승자를 확정한다. 이 호출이 마감을 수행했으면 확정 dict 를, 이미 닫혔거나
         마감 권한이 없으면 None 을 돌려준다 (None 이면 호출자는 아무것도 하지 않는다).
         반환 dict: {"confirmed_at", "total", "winner", "top"}
+
+        buffer=True 이면 확정 키 기록과 함께 (a) DB 반영 Stream 적재 (b) 방송 대기 목록 등록이
+        같은 Lua 안에서 원자적으로 일어난다. (Step 2)
         """
         for attempt in (0, 1):
             try:
                 raw = await self.r.evalsha(
-                    self._sha_close, 4,
+                    self._sha_close, 6,
                     k_confirmed(seat_id), k_zset(seat_id), k_count(seat_id), OPEN_KEY,
-                    seat_id, self.keep, confirmed_at,
+                    STREAM_KEY, UNBROADCAST_KEY,
+                    seat_id, self.keep, confirmed_at, "1" if buffer else "0",
                 )
                 return json.loads(raw) if raw else None
             except NoScriptError:
@@ -279,3 +300,64 @@ class RedisWindowStore:
         if n:
             await pipe.execute()
         return n
+
+    # =========================================================== Step 2: DB 앞단 Stream
+    async def ensure_group(self) -> None:
+        """소비자 그룹을 만든다 (없을 때만). Redis 가 비워졌다가 다시 쓰일 때도 호출해 복구한다."""
+        try:
+            await self.r.xgroup_create(STREAM_KEY, GROUP, id="0", mkstream=True)
+        except aioredis.ResponseError as e:
+            if "BUSYGROUP" not in str(e):
+                raise
+
+    @staticmethod
+    def _entries(res) -> list[tuple[str, dict]]:
+        return [(eid, fields) for eid, fields in res]
+
+    async def read_batch(self, consumer: str, count: int, block_ms: int | None) -> list[tuple[str, dict]]:
+        """새 항목을 최대 count 개 읽는다. block_ms=None 이면 기다리지 않는다."""
+        res = await self.r.xreadgroup(GROUP, consumer, {STREAM_KEY: ">"}, count=count, block=block_ms)
+        if not res:
+            return []
+        return self._entries(res[0][1])
+
+    async def claim_stale(self, consumer: str, min_idle_ms: int, count: int) -> list[tuple[str, dict]]:
+        """
+        읽어 갔지만 ACK 되지 않은 채 min_idle_ms 이상 지난 항목을 가져온다.
+        (소비자가 죽었거나 DB 반영이 실패한 항목을 다른/같은 소비자가 이어받는 경로)
+        """
+        res = await self.r.xautoclaim(STREAM_KEY, GROUP, consumer, min_idle_time=min_idle_ms,
+                                      start_id="0-0", count=count)
+        return self._entries(res[1]) if res and len(res) > 1 else []
+
+    async def ack_del(self, ids: list[str]) -> None:
+        """DB 반영에 성공한 항목을 확인(ACK)하고 Stream 에서 지운다 (Stream 이 무한히 커지지 않게)."""
+        if not ids:
+            return
+        pipe = self.r.pipeline(transaction=False)
+        pipe.xack(STREAM_KEY, GROUP, *ids)
+        pipe.xdel(STREAM_KEY, *ids)
+        await pipe.execute()
+
+    async def stream_len(self) -> int:
+        return int(await self.r.xlen(STREAM_KEY))
+
+    async def stream_pending(self) -> int:
+        try:
+            info = await self.r.xpending(STREAM_KEY, GROUP)
+            return int(info["pending"]) if info else 0
+        except aioredis.ResponseError:
+            return 0
+
+    # --------------------------------------------------------- 방송 대기 목록 (아웃박스)
+    async def mark_broadcast(self, seat_id: str) -> None:
+        """seat-status 방송이 성공했으므로 대기 목록에서 지운다."""
+        await self.r.zrem(UNBROADCAST_KEY, seat_id)
+
+    async def unbroadcast_due(self, now_ms: float, grace_ms: float = 2000.0, limit: int = 100) -> list[str]:
+        """확정된 지 grace_ms 이상 지났는데 방송 확인이 없는 좌석 (방송 직전 크래시/발행 실패 복구용)."""
+        return await self.r.zrangebyscore(UNBROADCAST_KEY, "-inf", now_ms - grace_ms, start=0, num=limit)
+
+    async def get_confirmed(self, seat_id: str) -> Optional[dict]:
+        raw = await self.r.get(k_confirmed(seat_id))
+        return json.loads(raw) if raw else None

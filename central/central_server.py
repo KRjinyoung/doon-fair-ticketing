@@ -1391,8 +1391,15 @@ for _win_i, _win_r in enumerate(list(app.routes)):
 #   4. HTTP 조회(/seat-status, /seats-overview, /seat-count, /debug/windows)를 Redis 기준으로 교체
 #
 # 공정성 불변식: 승자 기준은 corrected_epoch_ms(PoP 원본 시각 + 시계 오프셋) 이다.
-# 현재 구조와 같은 순서를 유지한다: Redis 확정 -> DB 쓰기 -> seat-status 방송.
-# (확정 직후 DB 쓰기 전에 크래시하는 구멍은 Step 2 의 Redis Stream 에서 닫는다.)
+#
+# [Step 2] REDIS_DB_BUFFER=1 을 함께 켜면 DB 앞단 버퍼가 활성화된다:
+#   * 창 마감 Lua 가 (확정 키 기록 + DB 반영 Stream 적재 + 방송 대기 등록)을 원자적으로 수행
+#   * seat-status 'confirmed' 방송은 DB 를 기다리지 않고 바로 나간다
+#   * DB 쓰기는 배치 소비자(워커마다 1개, 같은 소비자 그룹)가 Stream 에서 모아 unnest 단일
+#     INSERT 로 반영하고, 성공한 항목만 ACK 한다. 실패/크래시한 항목은 XAUTOCLAIM 으로 재처리
+#   * 방송이 실패하거나 방송 직전에 크래시해도 청소기가 방송 대기 목록(sw:unbroadcast)을 보고
+#     다시 방송한다 (PoP 캐시 갱신은 멱등)
+# 꺼져 있으면(기본) Step 1 과 동일: Redis 확정 -> DB 쓰기 -> seat-status 방송.
 # =============================================================================
 _REDIS_BACKEND = os.environ.get("STATE_BACKEND", "memory").strip().lower() == "redis"
 
@@ -1404,6 +1411,22 @@ if _REDIS_BACKEND:
     REDIS_SWEEP_GRACE_MS = float(os.environ.get("REDIS_SWEEP_GRACE_MS", "1000"))
     REDIS_SWEEP_INTERVAL_SEC = float(os.environ.get("REDIS_SWEEP_INTERVAL_SEC", "0.5"))
     REDIS_CONSUMER_RETRY_SEC = float(os.environ.get("REDIS_CONSUMER_RETRY_SEC", "5"))
+
+    # ---- Step 2: DB 앞단 버퍼 ----
+    _REDIS_DB_BUFFER = os.environ.get("REDIS_DB_BUFFER", "0").strip().lower() in ("1", "true", "yes", "on")
+    REDIS_DB_BATCH_MAX = int(os.environ.get("REDIS_DB_BATCH_MAX", "500"))       # 한 번에 반영할 최대 건수
+    REDIS_DB_SLOT_MS = float(os.environ.get("REDIS_DB_SLOT_MS", "50"))          # 첫 항목 이후 더 모으는 시간(ms)
+    REDIS_DB_CLAIM_IDLE_MS = int(os.environ.get("REDIS_DB_CLAIM_IDLE_MS", "5000"))  # 이 시간 넘게 ACK 없으면 재처리
+    REDIS_REBROADCAST_GRACE_MS = float(os.environ.get("REDIS_REBROADCAST_GRACE_MS", "2000"))
+
+    dbbuf_batches_total = Counter("central_dbbuf_batches_total", "DB 앞단 버퍼가 Postgres 에 반영한 배치 수")
+    dbbuf_rows_total = Counter("central_dbbuf_rows_total", "DB 앞단 버퍼가 Postgres 에 반영한 행 수")
+    dbbuf_batch_size = Histogram("central_dbbuf_batch_size", "배치 하나의 행 수",
+                                 buckets=(1, 2, 5, 10, 25, 50, 100, 250, 500, 1000))
+    dbbuf_persist_errors_total = Counter("central_dbbuf_persist_errors_total", "배치 반영 실패 횟수")
+    dbbuf_rebroadcast_total = Counter("central_dbbuf_rebroadcast_total", "방송 대기 목록에서 다시 방송한 횟수")
+    dbbuf_stream_len_gauge = Gauge("central_dbbuf_stream_len", "DB 반영 대기 Stream 길이")
+    dbbuf_pending_gauge = Gauge("central_dbbuf_pending", "읽어 갔지만 아직 ACK 되지 않은 항목 수")
 
     _store = None
     _redis_ready = None
@@ -1420,13 +1443,18 @@ if _REDIS_BACKEND:
         raw = data["pop_arrival_epoch_ms"]
         raw_us = data.get("pop_arrival_epoch_us")
         off = data.get("clock_offset_ms_measured", 0.0)
+        # 이 서버의 central_server.py 에 마이크로초 정밀도 패치(arrival_ms_precise)가 있으면 그것을 쓴다.
+        # 없으면 기존처럼 ms 원본을 쓴다. (기존 apply_seat_request 와 같은 식: 정밀 도착시각 + 오프셋)
+        precise = globals().get("arrival_ms_precise")
+        base = precise(raw, raw_us) if precise is not None else raw
         return {
             "request_id": data["request_id"],
             "pop_id": data["pop_id"],
+            # PoP가 찍은 보정 전 원본 시각.
             "pop_arrival_epoch_ms": raw,
             "pop_arrival_epoch_us": raw_us,
-            # 실제 판정에 쓰이는 보정된 시각 (기존 apply_seat_request 와 같은 식)
-            "corrected_epoch_ms": arrival_ms_precise(raw, raw_us) + off,
+            # 실제 판정에 쓰이는 보정된 시각
+            "corrected_epoch_ms": base + off,
         }
 
     async def _redis_apply_batch(msgs) -> None:
@@ -1474,9 +1502,35 @@ if _REDIS_BACKEND:
             # 타이머가 실패해도 창은 Redis 에 남아 있으므로 청소기가 이어서 닫는다.
             print(f"[central] redis 창 마감 실패 (seat_id={seat_id}), 청소기가 재시도: {e}")
 
+    def _redis_confirmed_payload(seat_id: str, c: dict) -> dict:
+        w = c["winner"]
+        return {
+            "seat_id": seat_id,
+            "status": "confirmed",
+            "winner_request_id": w["request_id"],
+            "winner_pop_id": w["pop_id"],
+            "winner_timestamp_ms": w["corrected_epoch_ms"],
+            "confirmed_at": c["confirmed_at"],
+            "all_requests": c["top"],
+        }
+
+    async def _redis_publish_confirmed(payload: dict) -> bool:
+        """publish_seat_status 와 같은 발행이지만 성공 여부를 돌려준다 (실패 시 방송 대기 목록에 남기기 위해)."""
+        try:
+            await kafka_producer.send_and_wait(
+                KAFKA_TOPIC_SEAT_STATUS, key=payload["seat_id"], value=payload
+            )
+            kafka_published_total.labels(status="confirmed").inc()
+            return True
+        except Exception as e:
+            kafka_publish_errors_total.inc()
+            print(f"[central] seat-status(confirmed) 발행 실패 (seat_id={payload.get('seat_id')}): {e}")
+            return False
+
     async def _redis_close(seat_id: str) -> None:
         confirmed_at = datetime.now(timezone.utc).isoformat()
-        res = await _store.close_window(seat_id, confirmed_at)
+        buf = _REDIS_DB_BUFFER
+        res = await _store.close_window(seat_id, confirmed_at, buffer=buf)
         if res is None:
             return  # 이미 다른 쪽(타이머/청소기/다른 워커)이 닫았다
         winner, top, total = res["winner"], res["top"], res["total"]
@@ -1488,7 +1542,14 @@ if _REDIS_BACKEND:
         confirmed_seat_detail_gauge.labels(seat_id=seat_id, winner_pop_id=winner["pop_id"]).set(1)
         pending_seats_gauge.set(await _store.pending_count())
 
-        # 기존과 같은 순서: DB 쓰기가 먼저, seat-status 방송은 그 다음. (재시도 3회, upsert 라 멱등)
+        if buf:
+            # [Step 2] DB 를 기다리지 않고 바로 방송한다. DB 반영은 Stream 소비자가 맡는다.
+            # 방송이 실패하거나 이 직후 크래시해도 방송 대기 목록에 남아 청소기가 다시 보낸다.
+            if await _redis_publish_confirmed(_redis_confirmed_payload(seat_id, res)):
+                await _store.mark_broadcast(seat_id)
+            return
+
+        # ---- Step 1 경로 (REDIS_DB_BUFFER=0): DB 쓰기가 먼저, seat-status 방송은 그 다음 ----
         written = False
         for attempt in range(3):
             try:
@@ -1522,7 +1583,6 @@ if _REDIS_BACKEND:
                     print(f"[central] Postgres 쓰기 최종 실패 (seat_id={seat_id}), seat-status 발행 안 함: {e}")
 
         if not written:
-            # Redis 에는 이미 확정으로 남아 있다. Step 2(Stream)에서 이 목록을 재처리한다.
             try:
                 await _store.r.sadd("sw:unpersisted", seat_id)
             except Exception:
@@ -1541,6 +1601,98 @@ if _REDIS_BACKEND:
             }
         )
 
+    # ------------------------------------------------ [Step 2] DB 앞단 배치 소비자
+    _DBBUF_SQL = """
+        INSERT INTO confirmed_seats (seat_id, winner_request_id, winner_pop_id, winner_timestamp_ms, confirmed_at)
+        SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::bigint[], $5::text[])
+        ON CONFLICT (seat_id) DO UPDATE SET
+            winner_request_id = EXCLUDED.winner_request_id,
+            winner_pop_id = EXCLUDED.winner_pop_id,
+            winner_timestamp_ms = EXCLUDED.winner_timestamp_ms,
+            confirmed_at = EXCLUDED.confirmed_at
+    """
+
+    async def _redis_persist_batch(entries) -> int:
+        # 같은 좌석이 한 배치에 두 번 들어 있으면 'ON CONFLICT DO UPDATE ... second time' 오류가 나므로
+        # 좌석당 마지막 항목만 남긴다.
+        rows: dict = {}
+        for _id, f in entries:
+            rows[f["seat"]] = f
+        seats = list(rows)
+        with db_write_duration.time():
+            async with db_conn() as conn:
+                await conn.execute(
+                    _DBBUF_SQL,
+                    seats,
+                    [rows[x]["rid"] for x in seats],
+                    [rows[x]["pop"] for x in seats],
+                    [round(float(rows[x]["ts"])) for x in seats],
+                    [rows[x]["at"] for x in seats],
+                )
+        return len(seats)
+
+    async def _redis_db_writer() -> None:
+        """
+        Stream 에서 확정 결과를 모아 Postgres 에 배치로 반영한다.
+        - 첫 항목을 받으면 REDIS_DB_SLOT_MS 만큼 더 모은 뒤(최대 REDIS_DB_BATCH_MAX) 한 번에 INSERT
+        - 반영에 성공한 항목만 ACK+삭제. 실패하면 ACK 하지 않아 REDIS_DB_CLAIM_IDLE_MS 후 재처리된다
+        - 워커마다 하나씩 떠도 되고(같은 소비자 그룹), 죽은 소비자의 항목은 XAUTOCLAIM 으로 이어받는다
+        """
+        await _redis_ready.wait()
+        name = f"{os.environ.get('HOSTNAME', 'central')}-{os.getpid()}"
+        last_claim = 0.0
+        grouped = False
+        while True:
+            try:
+                if not grouped:
+                    await _store.ensure_group()
+                    grouped = True
+                entries = await _store.read_batch(name, REDIS_DB_BATCH_MAX, 1000)
+                if entries and len(entries) < REDIS_DB_BATCH_MAX and REDIS_DB_SLOT_MS > 0:
+                    await asyncio.sleep(REDIS_DB_SLOT_MS / 1000.0)
+                    entries += await _store.read_batch(name, REDIS_DB_BATCH_MAX - len(entries), None)
+                if not entries and time.monotonic() - last_claim > 1.0:
+                    last_claim = time.monotonic()
+                    entries = await _store.claim_stale(name, REDIS_DB_CLAIM_IDLE_MS, REDIS_DB_BATCH_MAX)
+                if not entries:
+                    continue
+
+                n = None
+                for attempt in range(3):
+                    try:
+                        n = await _redis_persist_batch(entries)
+                        break
+                    except Exception as e:
+                        db_write_errors_total.inc()
+                        dbbuf_persist_errors_total.inc()
+                        print(f"[central] DB 배치 반영 실패 ({len(entries)}건), 시도 {attempt + 1}/3: {e}")
+                        await asyncio.sleep(0.2 * (attempt + 1))
+                if n is None:
+                    # ACK 하지 않는다 -> Stream 에 남아 있다가 claim 으로 다시 처리된다
+                    await asyncio.sleep(1.0)
+                    continue
+                await _store.ack_del([i for i, _ in entries])
+                dbbuf_batches_total.inc()
+                dbbuf_rows_total.inc(n)
+                dbbuf_batch_size.observe(n)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                # Redis 가 비워지거나(flushall) 잠시 끊긴 경우 포함: 그룹을 다시 만들고 이어간다
+                print(f"[central] DB 앞단 소비자 오류, 재시도: {e}")
+                grouped = False
+                await asyncio.sleep(0.5)
+
+    async def _redis_rebroadcast_due() -> None:
+        for seat_id in await _store.unbroadcast_due(time.time() * 1000.0, REDIS_REBROADCAST_GRACE_MS):
+            c = await _store.get_confirmed(seat_id)
+            if c is None:
+                await _store.mark_broadcast(seat_id)
+                continue
+            if await _redis_publish_confirmed(_redis_confirmed_payload(seat_id, c)):
+                await _store.mark_broadcast(seat_id)
+                dbbuf_rebroadcast_total.inc()
+
     async def _redis_sweeper() -> None:
         """마감 시각이 지났는데 열려 있는 창(타이머를 가진 워커가 죽은 경우 등)을 닫는다."""
         tick = 0
@@ -1550,9 +1702,14 @@ if _REDIS_BACKEND:
                 due = await _store.sweep_due(time.time() * 1000.0, REDIS_SWEEP_GRACE_MS)
                 for seat_id in due:
                     await _redis_close(seat_id)
+                if _REDIS_DB_BUFFER:
+                    await _redis_rebroadcast_due()
                 tick += 1
                 if tick % 10 == 0:
                     pending_seats_gauge.set(await _store.pending_count())
+                    if _REDIS_DB_BUFFER:
+                        dbbuf_stream_len_gauge.set(await _store.stream_len())
+                        dbbuf_pending_gauge.set(await _store.stream_pending())
                     n = 0
                     async for _k in _store.r.scan_iter(match="sw:*:c", count=1000):
                         n += 1
@@ -1631,10 +1788,15 @@ if _REDIS_BACKEND:
             print(f"[central] 확정 좌석 {n}건을 Postgres -> Redis 로 복원했습니다 [REDIS_V1]")
             _redis_ready.set()
             sweeper = asyncio.create_task(_redis_sweeper())
+            writer = asyncio.create_task(_redis_db_writer()) if _REDIS_DB_BUFFER else None
+            if _REDIS_DB_BUFFER:
+                print("[central] DB 앞단 Redis Stream 버퍼 활성화됨 [REDIS_V1][DBBUF]", flush=True)
             try:
                 yield state
             finally:
                 sweeper.cancel()
+                if writer is not None:
+                    writer.cancel()
                 for t in list(_redis_bg_tasks):
                     t.cancel()
         await _store.stop()

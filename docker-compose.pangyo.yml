@@ -80,6 +80,8 @@ services:
       - UVICORN_WORKERS=3
       # [REDIS_V1] 수집창 상태 저장소 선택: memory(기존) | redis. 기본은 memory 라 동작이 바뀌지 않는다.
       - STATE_BACKEND=${STATE_BACKEND:-memory}
+      # [Step 2] DB 앞단 Redis Stream 버퍼: 1 이면 켠다 (STATE_BACKEND=redis 와 함께 사용). 기본 0 = 꺼짐.
+      - REDIS_DB_BUFFER=${REDIS_DB_BUFFER:-0}
       - REDIS_URL=redis://redis:6379/0
       - KAFKA_JUDGE_CONSUMERS=1
       - PROMETHEUS_MULTIPROC_DIR=/tmp/prom_multiproc

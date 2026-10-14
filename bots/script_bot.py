@@ -55,7 +55,8 @@ def main():
     ap.add_argument("--disguise", action="store_true", help="2단계: 브라우저처럼 헤더 위장")
     ap.add_argument("--email", help="봇 계정 (없으면 익명)")
     ap.add_argument("--password", default="doon1234")
-    ap.add_argument("--device-fp", default="macro-farm-01", help="계정 여러 개가 같은 기기를 쓴다")
+    # scripts/seed_accounts.sh 가 봇 계정 30개를 로그인시킨 그 기기 값과 같게 둔다
+    ap.add_argument("--device-fp", default="a1b2c3d4e5f60789", help="계정 여러 개가 같은 기기를 쓴다")
     ap.add_argument("--seat", help="노릴 좌석 (없으면 남은 좌석 중 무작위)")
     ap.add_argument("--at", help="발사 시각 hh:mm:ss.fff (없으면 즉시)")
     a = ap.parse_args()

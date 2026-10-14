@@ -144,21 +144,26 @@ class Human:
             return (2.0 if z in "ABCDE" else 1.0) * (1.5 if z in "CH" else 1.0) / int(row) ** 0.7
         return rng.choices(free, [w(s) for s in free])[0]
 
+    def first_click(self, rng, preselected):
+        """실제 오픈 시각 기준 첫 클릭 시각(s, 네트워크 지연 제외).
+        실험판(play)과 민감도 분석(sim/stress.py)이 이 함수 하나를 같이 쓴다."""
+        screen = self.skew + rng.uniform(0, 0.05)  # 화면 잠금은 50ms 마다 확인
+        if self.anticipator and preselected:
+            t = screen + rng.uniform(-0.3, 0.05)
+            while t < screen:                       # 잠긴 동안 누른 건 무시된다
+                t += rng.uniform(*P["mash_gap"])
+            return t
+        t = screen + lognorm(rng, P["rt_median"], P["rt_sigma"])
+        return t if preselected else t + lognorm(rng, P["choose_median"], P["choose_sigma"])
+
     def play(self, open_at):
         """한 회차. open_at 은 실제(정확한) 시각. 화면은 기기 시계(open_at + skew)로 열린다."""
         rng = random.Random(f"{self.email}-{open_at}")
         if rng.random() > P["participate"]:
             return
-        seat = self.pick_seat(rng) if rng.random() < P["preselect"] else None
-        screen_open = open_at + self.skew + rng.uniform(0, 0.05)  # 화면 잠금은 50ms 마다 확인
-        if self.anticipator and seat:
-            t = screen_open + rng.uniform(-0.3, 0.05)
-            while t < screen_open:                     # 잠긴 동안 누른 건 무시된다
-                t += rng.uniform(*P["mash_gap"])
-        else:
-            t = screen_open + lognorm(rng, P["rt_median"], P["rt_sigma"])
-            if not seat:
-                t += lognorm(rng, P["choose_median"], P["choose_sigma"])
+        pre = rng.random() < P["preselect"]
+        seat = self.pick_seat(rng) if pre else None
+        t = open_at + self.first_click(rng, pre)
         close = open_at + self.skew + P["open_sec"]
         for _ in range(P["max_attempts"]):
             lat = rng.uniform(*(P["lat_mobile"] if self.mobile else P["lat_desktop"]))

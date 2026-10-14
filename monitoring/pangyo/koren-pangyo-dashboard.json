@@ -12,7 +12,7 @@
   "timezone": "browser",
   "editable": true,
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "1s",
   "time": {
     "from": "now-5m",
@@ -581,7 +581,7 @@
     {
       "id": 10,
       "type": "timeseries",
-      "title": "승자와 2위의 시간 차이",
+      "title": "1위와 2위 도착 시각 차이 (보정 시각 기준)",
       "description": "좌석 하나를 두고 1등과 2등이 얼마나 아슬아슬했는지. 이 값이 왼쪽 'PoP 간 최대 시계 차이'보다 크면 판정이 시계가 아니라 실제 도착 순서로 갈렸다는 뜻이다. 1ms 미만이면 Grafana가 µs로 자동 환산해서 보여준다.",
       "datasource": {
         "type": "prometheus",
@@ -590,7 +590,7 @@
       "gridPos": {
         "x": 0,
         "y": 16,
-        "w": 12,
+        "w": 9,
         "h": 8
       },
       "targets": [
@@ -684,9 +684,9 @@
         "uid": "koren-prometheus"
       },
       "gridPos": {
-        "x": 12,
+        "x": 9,
         "y": 16,
-        "w": 12,
+        "w": 9,
         "h": 8
       },
       "targets": [
@@ -753,9 +753,69 @@
       }
     },
     {
+      "id": 30,
+      "type": "stat",
+      "title": "동점 추첨 (누적)",
+      "description": "두 요청의 [보정 시각 ± 시계 보장 오차]가 겹쳐 시계로는 누가 먼저인지 보장할 수 없을 때, 누구나 다시 계산할 수 있는 sha1 추첨으로 승자를 정한 좌석 수. 추첨이 없으면 한 PoP 시계의 작은 치우침이 그 지역을 동점에서 늘 지게 만든다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 16,
+        "w": 6,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(central_tie_lottery_total) or vector(0)",
+          "legendFormat": "추첨",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
       "id": 11,
       "type": "row",
-      "title": "④ 공정성 근거 — 지역 간 시계 오차",
+      "title": "④ 공정성 근거 — 시계 오차 (평소 오차와 보장 한계)",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -776,7 +836,7 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 14,
+        "w": 9,
         "x": 0,
         "y": 25
       },
@@ -856,8 +916,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 10,
-        "x": 14,
+        "w": 7,
+        "x": 9,
         "y": 25
       },
       "targets": [
@@ -926,6 +986,86 @@
               {
                 "color": "red",
                 "value": 2000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "PoP별 시계 보장 오차 한계 (±ms) ← 이 안의 동점은 추첨",
+      "description": "chrony 오차 한계에서 이미 보정하는 오프셋을 빼고 남는 부분 = 루트 분산 + 루트 지연/2. 왼쪽의 평소 오차(수십 µs)와 달리 '보장할 수 있는' 범위다. 두 요청이 이 범위 안에서 겹치면 중앙이 추첨한다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 25,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "pop_clock_error_ms",
+          "legendFormat": "{{pop_id}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true,
+            "axisSoftMin": -50,
+            "axisSoftMax": 50
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
               }
             ]
           }
@@ -1427,7 +1567,7 @@
     {
       "id": 24,
       "type": "row",
-      "title": "⑦ 봇 탐지 — 엣지 1차 필터",
+      "title": "⑦ 봇 탐지 — 엣지 1차 필터 + 서울 AI 규칙",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -1773,6 +1913,84 @@
             "pointSize": 5,
             "stacking": {
               "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "서울 AI 규칙에 걸린 요청 (건/초)",
+      "description": "서울 AI 가 회차마다 배우고 자동 검사를 통과해 bot-rules 로 배포한 규칙(rule:<id>)에 걸린 좌석 요청. 기존 하드코딩 규칙(v0)과 구분해서 보여 준다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "koren-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 75,
+        "w": 24,
+        "h": 7
+      },
+      "targets": [
+        {
+          "expr": "sum by (pop_id, reason) (rate(pop_bot_flagged_total{reason=~\"rule:.*\"}[$__rate_interval]))",
+          "legendFormat": "{{pop_id}} {{reason}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "koren-prometheus"
+          }
+        }
+      ],
+      "interval": "1s",
+      "maxDataPoints": 400,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 40,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "normal",
               "group": "A"
             },
             "axisPlacement": "auto",

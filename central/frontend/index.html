@@ -26,12 +26,16 @@
   th { color: #8892a6; font-weight: normal; }
   tr.winner { background: rgba(126, 226, 160, 0.12); }
   tr.winner td:first-child::before { content: "🏆 "; }
+  tr.tie td:nth-child(5) { color: #ffcf6b; }
+  .badge.lottery { background: #4a3a12; color: #ffcf6b; margin-left: 6px; }
+  .note { color: #8892a6; font-size: 12px; margin-top: 8px; word-break: break-all; }
   .empty { color: #8892a6; padding: 30px; text-align: center; }
 </style>
 </head>
 <body>
   <h1>중앙 서버 - 좌석별 수집창 실시간 모니터</h1>
-  <div class="sub">0.5초마다 자동 새로고침됩니다. (보정 시각 = PoP 도착 시각 + 그 PoP의 시계 오차 보정, 이 값이 가장 빠른 요청이 승자로 정렬되어 표시됩니다)</div>
+  <div class="sub">0.5초마다 자동 새로고침됩니다. (보정 시각 = PoP 도착 시각 + 그 PoP의 시계 오차 보정. 이 값이 가장 빠른 요청이 승자다.
+  단, 두 요청의 [보정 시각 ± 시계 보장 오차]가 겹치면 시계로는 누가 먼저인지 보장할 수 없어 누구나 다시 계산할 수 있는 추첨으로 정한다)</div>
   <div id="container"></div>
  
 <script>
@@ -46,41 +50,55 @@ async function refresh() {
       return;
     }
  
-    container.innerHTML = windows.map(renderSeatCard).join('');
+    // 경쟁 중인 좌석을 먼저, 그다음 최근에 확정된 좌석 순으로 50개만 보여 준다 (좌석이 수백 개라).
+    const last = w => Math.max(0, ...(w.buffer || w.all_requests || []).map(r => r.corrected_epoch_ms));
+    windows.sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1) || last(b) - last(a));
+    container.innerHTML = windows.slice(0, 50).map(renderSeatCard).join('');
   } catch (err) {
     container.innerHTML = '<div class="empty">central 서버에 연결할 수 없습니다.</div>';
   }
 }
  
 function renderSeatCard(w) {
+  // 메모리 모드는 buffer(전부), Redis 모드는 all_requests(앞 N개)를 준다. Redis 모드에서
+  // 아직 닫히지 않은 창은 목록 없이 requests_so_far 만 온다.  [TIE_LOTTERY_V1]
+  const list = w.buffer || w.all_requests || [];
   // 실제 판정과 같은 기준으로 정렬해야 한다 — 서버는 보정된 시각(corrected_epoch_ms)으로
   // 승자를 정하므로, 여기서 원본으로 정렬하면 화면의 1등과 실제 승자가 달라 보인다.
-  const sorted = [...w.buffer].sort((a, b) => a.corrected_epoch_ms - b.corrected_epoch_ms);
-  const winnerId = w.winner ? w.winner.request_id : sorted[0]?.request_id;
+  const sorted = [...list].sort((a, b) => a.corrected_epoch_ms - b.corrected_epoch_ms);
+  const winnerId = w.winner ? w.winner.request_id : null;
+  const tie = new Set(w.lottery ? w.lottery.group : []);
 
   const rows = sorted.map(r => {
-    const isWinner = r.request_id === winnerId;
+    const cls = [r.request_id === winnerId ? 'winner' : '', tie.has(r.request_id) ? 'tie' : ''].join(' ');
+    const err = r.clock_error_ms ? '±' + Number(r.clock_error_ms).toFixed(3) : '-';
     return `
-      <tr class="${isWinner ? 'winner' : ''}">
+      <tr class="${cls}">
         <td>${r.request_id.slice(0, 8)}</td>
         <td>${r.pop_id}</td>
         <td>${r.pop_arrival_epoch_ms}</td>
+        <td>${Number(r.corrected_epoch_ms).toFixed(3)}</td>
+        <td>${err}${tie.has(r.request_id) ? ' 추첨' : ''}</td>
       </tr>
     `;
   }).join('');
- 
-  const badgeText = w.status === 'confirmed' ? '확정됨' : '대기 중 (아직 수집창 안 닫힘)';
+
+  const badgeText = w.status === 'confirmed' ? '확정됨'
+    : '대기 중 (아직 수집창 안 닫힘' + (w.requests_so_far ? `, 경쟁 ${w.requests_so_far}건` : '') + ')';
+  const lotteryBadge = w.lottery ? `<span class="badge lottery">동점 추첨 ${w.lottery.group.length}명</span>` : '';
+  const lotteryNote = w.lottery
+    ? `<div class="note">추첨 seed = sha1("${w.seat_id}|정렬한 요청ID들") = ${w.lottery.seed} → 정렬된 묶음[앞 8자리 % ${w.lottery.group.length}]</div>` : '';
  
   return `
     <div class="seat-card ${w.status}">
       <div class="seat-header">
         <span class="seat-id">좌석 ${w.seat_id}</span>
-        <span class="badge ${w.status}">${badgeText}</span>
+        <span><span class="badge ${w.status}">${badgeText}</span>${lotteryBadge}</span>
       </div>
       <table>
-        <thead><tr><th>요청 ID</th><th>PoP</th><th>도착 시각 (epoch ms)</th></tr></thead>
+        <thead><tr><th>요청 ID</th><th>PoP</th><th>원본 도착 (epoch ms)</th><th>보정 시각 (ms)</th><th>시계 보장 오차 (ms)</th></tr></thead>
         <tbody>${rows}</tbody>
-      </table>
+      </table>${lotteryNote}
     </div>
   `;
 }

@@ -187,6 +187,7 @@ async def sync_clock_offset():
         # 이벤트 루프가 잠깐이라도 멈추면 그만큼 좌석 요청 처리가 밀린다.
         clock_offset_ms, clock_error_ms = await asyncio.to_thread(read_chrony_offset)
         clock_offset_gauge.labels(pop_id=POP_ID).set(clock_offset_ms)
+        clock_error_gauge.labels(pop_id=POP_ID).set(clock_error_ms)
         print(f"[{POP_ID}] 클럭 오프셋 갱신: {clock_offset_ms:+.4f}ms (최대 오차 ±{clock_error_ms:.3f}ms)")
     except (OSError, ValueError, IndexError) as e:
         print(
@@ -373,6 +374,11 @@ Instrumentator().instrument(app).expose(app)
 clock_offset_gauge = Gauge(
     "pop_clock_offset_ms",
     "공통 기준 NTP 서버 대비 이 PoP 시계의 오차 (ms, 양수면 이 PoP 시계가 느림)",
+    ["pop_id"],
+)
+clock_error_gauge = Gauge(
+    "pop_clock_error_ms",
+    "오프셋을 보정하고도 남는 이 PoP 시계의 최대 오차 (ms). 이 안의 동점은 중앙이 추첨한다  [TIE_LOTTERY_V1]",
     ["pop_id"],
 )
 

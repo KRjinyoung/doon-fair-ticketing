@@ -27,6 +27,7 @@
 | [07-pitch-script.md](07-pitch-script.md) | 발표 원고 (기존 기술 이해 → 독창성 → 실용적 구현, 실측 숫자 반영) |
 | [08-ai-macro-plan.html](08-ai-macro-plan.html) | AI 매크로 방어 계획 총정리 (2026-10-14): AI 위치, 보강안, 참가자 없는 검증 설계, 조사로 바뀐 설계, 일정, 결정 사항 |
 | [09-ai-macro-results.md](09-ai-macro-results.md) | AI 매크로 탐지 실험 결과 (2026-10-15): 격리 실험판 38회차, "5번 연속 12ms 안이면 매크로", 자동 반영 시연, 어디서 깨지나, 한계·예상 질문 |
+| [10-industry-defense.md](10-industry-defense.md) | 업계의 매크로 방어 다섯 겹(대기열·봇 탐지·매수 제한·입장 확인·법), 약점, DOON의 차별점과 하지 않는 것 |
 
 ## 핵심 결론 요약
 

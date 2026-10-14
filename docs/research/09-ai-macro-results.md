@@ -1,7 +1,7 @@
 # AI 매크로 탐지 실험 결과 (2026-10-15)
 
 격리 실험판에서 사람 시뮬레이터와 실제 봇으로 38회차를 돌려 얻은 결과다.
-설계는 [08-ai-macro-plan.html](08-ai-macro-plan.html)을 따랐다. 코드는 `feat/bot-rules` 브랜치에 있다.
+설계는 [08-ai-macro-plan.html](08-ai-macro-plan.html)을 따랐다. 업계 방어와의 비교는 [10-industry-defense.md](10-industry-defense.md). 코드는 `feat/bot-rules` 브랜치에 있다.
 
 ## 한 줄 결론
 

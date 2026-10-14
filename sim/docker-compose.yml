@@ -1,0 +1,110 @@
+# ===========================================================================
+# 격리 실험판 (AI 매크로 학습 데이터용)  —  판교에서 실행, 라이브와 완전히 분리
+# ---------------------------------------------------------------------------
+#   bash sim/up.sh        띄우기 + 계정 시드
+#   bash sim/down.sh      전부 지우기 (컨테이너, 볼륨, 이미지)
+#
+# 라이브와 겹치지 않게 하는 장치
+#   - name: doonsim  → 컨테이너·네트워크·볼륨 이름이 전부 doonsim-* 로 따로 생긴다
+#   - container_name 을 쓰지 않는다 (라이브는 postgres, kafka ... 이름을 쓴다)
+#   - 호스트 포트는 127.0.0.1 에만 연다 (판교 PoP 18198, 대전 PoP 18199, central 18001)
+#   - Kafka 는 바깥에 열지 않는다. 서울로도 가지 않는다 (로그는 sim/dump_log.sh 로 꺼낸다)
+#
+# PoP 를 둘(판교, 대전 이름) 띄우는 이유: 지역별 오탐이 고른지 같은 조건으로 비교하려고.
+# ===========================================================================
+name: doonsim
+
+x-pop: &pop
+  build: ../pop
+  restart: unless-stopped
+  volumes:
+    - /run/pop-clock:/clock:ro
+  depends_on: [central, kafka]
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment: [POSTGRES_USER=ticketing, POSTGRES_PASSWORD=sim, POSTGRES_DB=ticketing]
+
+  kafka:
+    image: apache/kafka:3.7.0
+    environment:
+      - KAFKA_NODE_ID=1
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - KAFKA_LISTENERS=INTERNAL://:9092,CONTROLLER://:9093
+      - KAFKA_ADVERTISED_LISTENERS=INTERNAL://kafka:9092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT
+      - KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_NUM_PARTITIONS=3
+      - CLUSTER_ID=U2ltRG9vbkNsdXN0ZXIwMQ
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory-policy", "noeviction"]
+
+  central:
+    build: ../central
+    restart: unless-stopped
+    ports: ["127.0.0.1:18001:8080"]
+    environment:
+      - UVICORN_WORKERS=3
+      - STATE_BACKEND=redis
+      - REDIS_DB_BUFFER=1
+      - REDIS_URL=redis://redis:6379/0
+      - KAFKA_JUDGE_CONSUMERS=1
+      - PROMETHEUS_MULTIPROC_DIR=/tmp/prom_multiproc
+      - AUTH_POOL_MAX_SIZE=4
+      - KAFKA_BROKER=kafka:9092
+      - DATABASE_URL=postgresql://ticketing:sim@postgres:5432/ticketing
+      - DB_POOL_MAX_SIZE=16
+      - PYTHONUNBUFFERED=1
+      - WINDOW_MIN_MS=3000
+      - WINDOW_MAX_MS=3000
+      - ALL_REQUESTS_KEEP=40
+    depends_on: [kafka, postgres, redis]
+
+  pop-pangyo:
+    <<: *pop
+    environment:
+      - POP_ID=pop-pangyo
+      - BOT_FILTER_MODE=${SIM_FILTER_MODE:-monitor}
+      - UVICORN_WORKERS=2
+      - PROMETHEUS_MULTIPROC_DIR=/tmp/prom_multiproc
+      - HEARTBEAT_INTERVAL_SEC=1
+      - CENTRAL_URL=http://central:8080
+      - KAFKA_BROKER=kafka:9092
+      - CLOCK_OFFSET_FILE=/clock/tracking.csv
+      - PYTHONUNBUFFERED=1
+
+  pop-daejeon:
+    <<: *pop
+    environment:
+      - POP_ID=pop-daejeon
+      - BOT_FILTER_MODE=${SIM_FILTER_MODE:-monitor}
+      - UVICORN_WORKERS=2
+      - PROMETHEUS_MULTIPROC_DIR=/tmp/prom_multiproc
+      - HEARTBEAT_INTERVAL_SEC=1
+      - CENTRAL_URL=http://central:8080
+      - KAFKA_BROKER=kafka:9092
+      - CLOCK_OFFSET_FILE=/clock/tracking.csv
+      - PYTHONUNBUFFERED=1
+
+  # nginx 설정은 up.sh 가 라이브 설정(git HEAD)에서 만들어 .gen/ 에 둔다.
+  nginx-pangyo:
+    image: nginx:alpine
+    ports: ["127.0.0.1:18198:80"]
+    volumes:
+      - ./.gen/nginx-pangyo.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../pop/frontend:/usr/share/nginx/html:ro
+    depends_on: [pop-pangyo]
+
+  nginx-daejeon:
+    image: nginx:alpine
+    ports: ["127.0.0.1:18199:80"]
+    volumes:
+      - ./.gen/nginx-daejeon.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../pop/frontend:/usr/share/nginx/html:ro
+    depends_on: [pop-daejeon]

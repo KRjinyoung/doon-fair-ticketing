@@ -14,6 +14,7 @@ central_server.py 는 이 모듈을 import 해서 seat_windows(dict) 대신 사�
 
 [공정성 불변식]
   승자 기준은 항상 score = corrected_epoch_ms (PoP 원본 시각 + 시계 오프셋) 이다.
+  단, 시계 최대 오차(clock_error_ms) 안의 동점은 마감 Lua 가 추첨한다.  [TIE_LOTTERY_V1]
   "중앙이 요청을 처리한 순서"는 판정에 절대 영향을 주지 않는다.
   동점이면 ZSET 규칙(member 문자열 사전순)으로 결정되며, 이는 결정적(deterministic)이다.
 
@@ -103,19 +104,42 @@ if #top == 0 then
 end
 local total = tonumber(redis.call('GET', KEYS[3]) or '0')
 if total < #top then total = #top end
+-- 시계 최대 오차 안의 동점은 추첨 (central_server.pick_winner 와 같은 식).  [TIE_LOTTERY_V1]
+-- 가장 빠른 요청과 [보정 시각 ± clock_error_ms] 구간이 겹치는 요청을 묶고,
+-- seed = sha1(좌석|정렬한 요청ID들), 승자 = 정렬된 묶음[(seed 앞 8자리 % 묶음 크기) + 1]
+local function err(e) return tonumber(e.clock_error_ms) or 0 end
+local first = cjson.decode(top[1])
+local limit = first.corrected_epoch_ms + err(first)
+local grp = {}
+for i = 1, #top do
+  local e = (i == 1) and first or cjson.decode(top[i])
+  if e.corrected_epoch_ms - err(e) <= limit then
+    grp[#grp + 1] = {id = tostring(e.request_id), i = i}
+  end
+end
+local w = 1
+local lottery = ''
+if #grp > 1 then
+  table.sort(grp, function(a, b) return a.id < b.id end)
+  local ids = {}
+  for k = 1, #grp do ids[k] = grp[k].id end
+  local seed = redis.sha1hex(ARGV[1] .. '|' .. table.concat(ids, ','))
+  w = grp[(tonumber(string.sub(seed, 1, 8), 16) % #grp) + 1].i
+  lottery = ',"lottery":{"group":["' .. table.concat(ids, '","') .. '"],"seed":"' .. seed .. '"}'
+end
 local val = '{"confirmed_at":"' .. ARGV[3] .. '","total":' .. string.format('%d', total)
-        .. ',"winner":' .. top[1] .. ',"top":[' .. table.concat(top, ',') .. ']}'
+        .. ',"winner":' .. top[w] .. ',"top":[' .. table.concat(top, ',') .. ']' .. lottery .. '}'
 redis.call('SET', KEYS[1], val)
 redis.call('DEL', KEYS[2], KEYS[3])
 -- Step 2: ARGV[4]=='1' 이면 같은 스크립트 안에서 (확정 키 기록 + DB 반영 큐 적재 + 방송 대기 등록)을
 -- 한꺼번에 한다. 셋 중 일부만 남는 상태가 생기지 않는다.
 if ARGV[4] == '1' then
-  local w = cjson.decode(top[1])
+  local wd = cjson.decode(top[w])
   redis.call('XADD', KEYS[5], '*',
              'seat', ARGV[1],
-             'rid', tostring(w.request_id),
-             'pop', tostring(w.pop_id),
-             'ts', string.format('%.17g', w.corrected_epoch_ms),
+             'rid', tostring(wd.request_id),
+             'pop', tostring(wd.pop_id),
+             'ts', string.format('%.17g', wd.corrected_epoch_ms),
              'at', ARGV[3])
   local t = redis.call('TIME')
   redis.call('ZADD', KEYS[6], t[1] * 1000 + math.floor(t[2] / 1000), ARGV[1])
@@ -253,7 +277,8 @@ class RedisWindowStore:
         confirmed, open_score, n = await pipe.execute()
         if confirmed:
             c = json.loads(confirmed)
-            return {"status": "confirmed", "winner": c["winner"], "all_requests": c["top"]}
+            return {"status": "confirmed", "winner": c["winner"], "all_requests": c["top"],
+                    "lottery": c.get("lottery")}  # [TIE_LOTTERY_V1]
         if open_score is not None:
             return {"status": "pending", "requests_so_far": int(n or 0)}
         return {"status": "open"}

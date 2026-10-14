@@ -91,6 +91,13 @@ PoP 안에서의 처리 순서 (미들웨어는 바깥쪽부터):
    - `seat-status`에 `pending {requests_so_far}` 발행 (휘발성이라 DB와 무관하게 즉시).
 3. 수집창이 닫히면 `close_window_after_delay()`
    - `corrected_epoch_ms` 오름차순 정렬 → **1등이 승자**. 1·2등 격차를 `winner_margin_ms`로 기록.
+   - **단, 시계 오차 안의 동점은 추첨한다** (`pick_winner`, Redis 경로는 마감 Lua 안에서 같은 식).
+     PoP 는 요청마다 `clock_error_ms` = chrony 오차 한계에서 보정하고 남는 부분(루트 분산 + 루트 지연/2,
+     판교 실측 약 1.2ms)을 함께 보낸다. 가장 빠른 요청과 [보정 시각 ± clock_error_ms] 구간이 겹치는
+     요청들을 묶어 `seed = sha1("좌석|정렬한 요청ID들")`, 승자 = 정렬된 묶음[int(seed 앞 8자리,16) % 묶음 크기].
+     묶음과 seed 는 `seat-status` 확정 이벤트의 `lottery` 로 공개되어 누구나 다시 계산할 수 있다.
+     이게 없으면 한 PoP 시계가 오차 안에서 늘 조금 늦게 잴 때 그 지역이 동점에서 늘 진다
+     (시뮬레이션: 0.3ms 치우침에서 판교 100% → 추첨 후 50%).
    - **Postgres `confirmed_seats` INSERT(ON CONFLICT UPDATE, 최대 3회 재시도)** 가 먼저.
    - **커밋 성공한 뒤에만** `seat-status`에 `confirmed {winner_request_id, winner_pop_id, winner_timestamp_ms, all_requests(기본 최대 20, 시연 구성 40)}` 발행.
      실패하면 그대로 return — "DB에 없는 확정 이벤트"가 나가지 않게 하는 불변식.

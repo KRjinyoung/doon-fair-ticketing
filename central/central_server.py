@@ -41,6 +41,7 @@
 """
 
 import asyncio
+import hashlib
 import json
 import os
 import time
@@ -590,6 +591,10 @@ competitors_per_seat = Histogram(
 # *** 1등과 2등의 타임스탬프 격차(ms) *** — 이 값이 작을수록 "간발의 차"로
 # 승부가 갈렸다는 뜻이고, 클럭 동기화 정확도가 판정에 직접 영향을 주는 구간이다.
 # (오프셋 오차가 이 격차보다 크면 판정이 뒤집힐 수 있으므로, 공정성의 핵심 근거 지표.)
+tie_lottery_total = Counter(
+    "central_tie_lottery_total",
+    "시계 최대 오차 안에서 동점이 나 추첨으로 승자를 정한 좌석 수  [TIE_LOTTERY_V1]",
+)
 winner_margin_ms = Histogram(
     "central_winner_margin_ms",
     "승자와 2위의 도착 타임스탬프 차이(ms)",
@@ -656,6 +661,8 @@ class JudgeRequest(BaseModel):
     # 기본값 0.0인 이유: 오프셋을 안 보내는 구버전 PoP나 수동 테스트 요청이 와도
     # "보정 없음"으로 취급해 판정이 멈추지 않게 한다.
     clock_offset_ms_measured: float = 0.0
+    # 보정 후에도 남는 그 PoP 시계의 최대 오차. 동점 추첨 범위.  [TIE_LOTTERY_V1]
+    clock_error_ms: float = 0.0
 
 
 def arrival_ms_precise(epoch_ms: int, epoch_us: Optional[int]) -> float:
@@ -689,6 +696,32 @@ async def publish_seat_status(payload: dict):
         print(f"[central] seat-status 발행 실패: {e}")
 
 
+def pick_winner(seat_id: str, ranked: list) -> tuple:
+    """
+    보정 시각 오름차순 목록에서 승자를 고른다. 반환: (승자, 추첨 기록 또는 None).  [TIE_LOTTERY_V1]
+
+    *** 시계 오차 안의 동점은 추첨한다 ***
+    두 요청의 [보정 시각 ± 그 PoP 시계 최대 오차] 구간이 겹치면, 시계로는 누가 먼저인지
+    보장할 수 없다. 그때 "작은 값이 승자"로 정하면 측정 잡음이 승자를 정하고, 한 PoP 의
+    시계가 늘 조금 늦게 재면 그 지역이 동점에서 늘 진다 — 지역 편향이다.
+    그래서 가장 빠른 요청과 구간이 겹치는 요청들을 묶어 추첨한다.
+
+    추첨은 누구나 다시 계산할 수 있다:
+        seed = sha1("좌석|요청ID들을 정렬해 쉼표로 이은 것"),  승자 = 정렬된 묶음[int(seed 앞 8자리, 16) % 묶음 크기]
+    Redis 경로(redis_window.LUA_CLOSE)도 같은 식을 쓴다.
+    """
+    first = ranked[0]
+    limit = first["corrected_epoch_ms"] + (first.get("clock_error_ms") or 0.0)
+    group = sorted((e for e in ranked if e["corrected_epoch_ms"] - (e.get("clock_error_ms") or 0.0) <= limit),
+                   key=lambda e: e["request_id"])
+    if len(group) < 2:
+        return first, None
+    ids = [e["request_id"] for e in group]
+    seed = hashlib.sha1(f"{seat_id}|{','.join(ids)}".encode()).hexdigest()
+    tie_lottery_total.inc()
+    return group[int(seed[:8], 16) % len(group)], {"group": ids, "seed": seed}
+
+
 def apply_seat_request(
     seat_id: str,
     request_id: str,
@@ -696,6 +729,7 @@ def apply_seat_request(
     pop_arrival_epoch_ms: int,
     clock_offset_ms_measured: float = 0.0,
     pop_arrival_epoch_us: Optional[int] = None,
+    clock_error_ms: float = 0.0,
 ) -> dict:
     """
     판정 로직의 실제 본체. HTTP 핸들러(/judge)와 Kafka consumer 양쪽에서
@@ -728,6 +762,8 @@ def apply_seat_request(
         "pop_arrival_epoch_us": pop_arrival_epoch_us,
         # 실제 판정에 쓰이는 보정된 시각.
         "corrected_epoch_ms": corrected_epoch_ms,
+        # 보정 후에도 남는 시계 최대 오차. 동점 추첨 범위.  [TIE_LOTTERY_V1]
+        "clock_error_ms": clock_error_ms,
     }
 
     if seat_id not in seat_windows:
@@ -767,6 +803,7 @@ async def receive_request(req: JudgeRequest):
         req.pop_arrival_epoch_ms,
         req.clock_offset_ms_measured,
         req.pop_arrival_epoch_us,
+        req.clock_error_ms,
     )
 
 
@@ -818,6 +855,7 @@ async def kafka_consume_loop(consumer_idx: int = 0):
                             # 판정이 KeyError로 멈추지 않게 한다 (보정 없이 판정).
                             data.get("clock_offset_ms_measured", 0.0),
                             data.get("pop_arrival_epoch_us"),
+                            data.get("clock_error_ms", 0.0),
                         )
         except asyncio.CancelledError:
             await consumer.stop()
@@ -840,10 +878,12 @@ async def close_window_after_delay(seat_id: str):
     # 원본이 아니라 보정값으로 비교해야 한다. 원본으로 비교하면 시계가 조금 빠른
     # 지역이 실제로는 늦게 눌렀는데도 이기는 일이 생긴다.
     buffer_sorted = sorted(buffer, key=lambda e: e["corrected_epoch_ms"])
-    winner = buffer_sorted[0]
+    # 시계 오차 안의 동점은 추첨. Redis 경로와 같은 후보(앞 ALL_REQUESTS_KEEP 개)로 고른다.
+    winner, lottery = pick_winner(seat_id, buffer_sorted[:ALL_REQUESTS_KEEP])  # [TIE_LOTTERY_V1]
 
     window["status"] = "confirmed"
     window["winner"] = winner
+    window["lottery"] = lottery
     window["all_requests"] = buffer_sorted[:ALL_REQUESTS_KEEP]  # [CAP_V1]
     pending_seats_gauge.set(sum(1 for w in seat_windows.values() if w["status"] == "pending"))
     confirmed_seats_gauge.set(sum(1 for w in seat_windows.values() if w["status"] == "confirmed"))
@@ -921,6 +961,8 @@ async def close_window_after_delay(seat_id: str):
             "winner_timestamp_ms": winner["corrected_epoch_ms"],
             "confirmed_at": confirmed_at,
             "all_requests": buffer_sorted[:ALL_REQUESTS_KEEP],  # [CAP_V1]
+            # 동점 추첨을 했으면 묶음과 seed. 누구나 같은 식으로 승자를 다시 계산할 수 있다.
+            "lottery": lottery,  # [TIE_LOTTERY_V1]
         }
     )
 
@@ -944,6 +986,7 @@ def get_seat_status(seat_id: str):
         "winner_request_id": window["winner"]["request_id"],
         "winner_pop_id": window["winner"]["pop_id"],
         "all_requests": window["all_requests"],
+        "lottery": window.get("lottery"),  # [TIE_LOTTERY_V1]
     }
 
 
@@ -1455,6 +1498,8 @@ if _REDIS_BACKEND:
             "pop_arrival_epoch_us": raw_us,
             # 실제 판정에 쓰이는 보정된 시각
             "corrected_epoch_ms": base + off,
+            # 보정 후에도 남는 시계 최대 오차. 마감 Lua 의 동점 추첨 범위.  [TIE_LOTTERY_V1]
+            "clock_error_ms": data.get("clock_error_ms", 0.0),
         }
 
     async def _redis_apply_batch(msgs) -> None:
@@ -1512,6 +1557,7 @@ if _REDIS_BACKEND:
             "winner_timestamp_ms": w["corrected_epoch_ms"],
             "confirmed_at": c["confirmed_at"],
             "all_requests": c["top"],
+            "lottery": c.get("lottery"),  # [TIE_LOTTERY_V1]
         }
 
     async def _redis_publish_confirmed(payload: dict) -> bool:
@@ -1598,6 +1644,7 @@ if _REDIS_BACKEND:
                 "winner_timestamp_ms": winner["corrected_epoch_ms"],
                 "confirmed_at": confirmed_at,
                 "all_requests": top,
+                "lottery": res.get("lottery"),  # [TIE_LOTTERY_V1]
             }
         )
 
@@ -1829,6 +1876,7 @@ if _REDIS_BACKEND:
             "winner_request_id": w["request_id"],
             "winner_pop_id": w["pop_id"],
             "all_requests": st["all_requests"],
+            "lottery": st.get("lottery"),  # [TIE_LOTTERY_V1]
         }
 
     async def _redis_http_seats_overview():

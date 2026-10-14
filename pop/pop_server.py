@@ -135,6 +135,12 @@ _seat_count_lock = asyncio.Lock()
 # 보정된 값인지 구분할 수 없게 되고, 판정 근거를 사후에 추적할 수 없다.
 clock_offset_ms: float = 0.0
 
+# 위 보정을 하고도 남는 이 PoP 시계의 최대 오차(ms).  [TIE_LOTTERY_V1]
+# chrony 문서의 오차 한계 = |오프셋| + 루트 분산 + 루트 지연/2 에서, 오프셋은 이미 보정하므로
+# 남는 것은 (루트 분산 + 루트 지연/2) 이다. 중앙은 두 요청의 [보정 시각 ± 이 값] 구간이 겹치면
+# "시계로는 누가 먼저인지 보장할 수 없다"고 보고 동점 추첨을 한다.
+clock_error_ms: float = 0.0
+
 # 5초마다 갱신. 좌석 판정의 승부 margin이 ms 단위이므로, 오프셋이 그보다
 # 훨씬 촘촘하게 갱신되어야 판정 시점의 실제 오차를 반영할 수 있다.
 # 호스트 수집기(chrony-offset-writer.sh)도 같은 주기로 파일을 갱신한다.
@@ -143,9 +149,12 @@ CLOCK_SYNC_INTERVAL_SECONDS = 5
 # `chronyc -c tracking` CSV에서 시스템 시계 오차(초)가 들어있는 필드 위치 (0-based).
 # 사람이 읽는 출력의 "System time" 줄과 같은 값이다. 실측으로 확인했다.
 CHRONY_FIELD_SYSTEM_TIME = 4
+# 같은 CSV 의 루트 지연(10), 루트 분산(11). 단위는 초.  [TIE_LOTTERY_V1]
+CHRONY_FIELD_ROOT_DELAY = 10
+CHRONY_FIELD_ROOT_DISPERSION = 11
 
 
-def read_chrony_offset() -> float:
+def read_chrony_offset() -> tuple[float, float]:
     """
     호스트가 내려준 chrony tracking 파일을 읽어서 이 호스트 시계의 오차(ms)를 낸다.
 
@@ -157,7 +166,9 @@ def read_chrony_offset() -> float:
     """
     with open(CLOCK_OFFSET_FILE) as f:
         fields = f.read().strip().split(",")
-    return float(fields[CHRONY_FIELD_SYSTEM_TIME]) * 1000
+    error_ms = (float(fields[CHRONY_FIELD_ROOT_DISPERSION])
+                + float(fields[CHRONY_FIELD_ROOT_DELAY]) / 2) * 1000
+    return float(fields[CHRONY_FIELD_SYSTEM_TIME]) * 1000, error_ms
 
 
 async def sync_clock_offset():
@@ -170,13 +181,13 @@ async def sync_clock_offset():
     clock_offset_ms를 건드리지 않으면 마지막 값이 그대로 유지되는데, 0으로 되돌리면
     "보정이 필요 없다"는 거짓 신호가 되므로 유지하는 편이 맞다.
     """
-    global clock_offset_ms
+    global clock_offset_ms, clock_error_ms
     try:
         # 파일 읽기는 블로킹이므로 스레드로 넘긴다. tmpfs라 보통 즉시 끝나지만,
         # 이벤트 루프가 잠깐이라도 멈추면 그만큼 좌석 요청 처리가 밀린다.
-        clock_offset_ms = await asyncio.to_thread(read_chrony_offset)
+        clock_offset_ms, clock_error_ms = await asyncio.to_thread(read_chrony_offset)
         clock_offset_gauge.labels(pop_id=POP_ID).set(clock_offset_ms)
-        print(f"[{POP_ID}] 클럭 오프셋 갱신: {clock_offset_ms:+.4f}ms")
+        print(f"[{POP_ID}] 클럭 오프셋 갱신: {clock_offset_ms:+.4f}ms (최대 오차 ±{clock_error_ms:.3f}ms)")
     except (OSError, ValueError, IndexError) as e:
         print(
             f"[{POP_ID}] 클럭 오프셋 읽기 실패 ({CLOCK_OFFSET_FILE}): {e} "
@@ -446,6 +457,7 @@ async def receive_seat_request(req: SeatRequest, request: Request):
     # 요청 처리 중에 바뀔 수 있으므로, 한 번 읽어서 record와 Kafka 메시지에
     # 같은 값을 쓴다 (둘이 달라지면 사후 추적이 어긋난다).
     offset_ms = round(clock_offset_ms, 3)
+    error_ms = round(clock_error_ms, 3)  # [TIE_LOTTERY_V1]
 
     request_id = str(uuid.uuid4())
     # 나노초 정수에서 바로 뽑는다(부동소수 왕복 제거). [POPAUTH_PAYLOAD_V1]
@@ -473,6 +485,8 @@ async def receive_seat_request(req: SeatRequest, request: Request):
         "clock_offset_ms_applied": 0.0,
         # 공통 기준 NTP 서버 대비 이 PoP의 시계 오차. 중앙이 (원본 + offset)으로 보정한다.
         "clock_offset_ms_measured": offset_ms,
+        # 보정 후에도 남는 시계 최대 오차. 중앙의 동점 추첨 기준.  [TIE_LOTTERY_V1]
+        "clock_error_ms": error_ms,
         # 누가 요청했는지. 검증 실패해도 identity_verified=False 로 남긴다.
         # "검증 안 된 요청"과 "검증해봤더니 가짜인 요청"은 다른 신호다. [POPAUTH_PAYLOAD_V1]
         **_identity.as_payload(),
@@ -499,6 +513,8 @@ async def receive_seat_request(req: SeatRequest, request: Request):
                     # *** 중앙이 판정할 때 위 원본에 더할 보정값 ***
                     # 공통 기준 NTP 서버 대비 이 PoP의 시계 오차(5초마다 갱신).
                     "clock_offset_ms_measured": offset_ms,
+                    # 보정 후에도 남는 시계 최대 오차. 중앙이 동점 추첨 범위를 정한다.  [TIE_LOTTERY_V1]
+                    "clock_error_ms": error_ms,
                     # 중앙이 동일 계정/동일 기기의 중복 요청을 판정 단계에서
                     # 걸러낼 수 있게 신원을 함께 보낸다.  [POPAUTH_PAYLOAD_V1]
                     **_identity.as_payload(),
@@ -529,6 +545,7 @@ async def receive_seat_request(req: SeatRequest, request: Request):
                 # 서울에서 (보정 도착 시각 - 실험별 오픈 시각)으로 구한다.
                 "pop_arrival_epoch_us": epoch_us,
                 "clock_offset_ms_measured": offset_ms,
+                "clock_error_ms": error_ms,  # [TIE_LOTTERY_V1]
                 "client_sent_at": req.client_sent_at,
                 **_first_layer_payload(request),
                 # *** 매크로 탐지의 핵심 특징 ***
@@ -568,6 +585,8 @@ async def get_seat_status(seat_id: str):
         "winner_request_id": cached["winner_request_id"],
         "winner_pop_id": cached["winner_pop_id"],
         "all_requests": cached.get("all_requests", []),
+        # 시계 오차 안의 동점을 추첨했으면 묶음과 seed (없으면 None).  [TIE_LOTTERY_V1]
+        "lottery": cached.get("lottery"),
     }
 
 
@@ -654,6 +673,7 @@ def get_clock_offset():
     return {
         "pop_id": POP_ID,
         "clock_offset_ms": round(clock_offset_ms, 3),
+        "clock_error_ms": round(clock_error_ms, 3),  # 보정 후 남는 최대 오차 [TIE_LOTTERY_V1]
         "sync_interval_seconds": CLOCK_SYNC_INTERVAL_SECONDS,
     }
 

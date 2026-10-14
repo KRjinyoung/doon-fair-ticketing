@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOON AI 매크로 계획</title>
+<style>
+:root{
+  --bg:#F5F6F3; --sheet:#FFFFFF; --ink:#1A2330; --muted:#5B6773; --rule:#D3D8DD; --chip:#E7EAED;
+  --l1:#2A62A3; --l1s:#DFE9F5; --l2:#237757; --l2s:#DAEFE4; --ai:#63469F; --ais:#E8E1F4;
+  --warn:#A04A2A; --warns:#F6E4DB; --ok:#237757;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#131A21; --sheet:#1A232C; --ink:#E3E8ED; --muted:#9AA6B2; --rule:#2F3B47; --chip:#25313C;
+    --l1:#78A9DF; --l1s:#1D3046; --l2:#64C196; --l2s:#173529; --ai:#B396E5; --ais:#2B2241;
+    --warn:#E59276; --warns:#3B231A; --ok:#64C196;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131A21; --sheet:#1A232C; --ink:#E3E8ED; --muted:#9AA6B2; --rule:#2F3B47; --chip:#25313C;
+  --l1:#78A9DF; --l1s:#1D3046; --l2:#64C196; --l2s:#173529; --ai:#B396E5; --ais:#2B2241;
+  --warn:#E59276; --warns:#3B231A; --ok:#64C196;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;font-size:16px;line-height:1.75;word-break:keep-all;overflow-wrap:break-word}
+main{max-width:920px;margin:0 auto;padding:40px 16px 80px}
+h1{font-size:clamp(28px,5vw,40px);line-height:1.25;margin:0 0 12px}
+h2{font-size:24px;margin:0 0 14px;line-height:1.4}
+h3{font-size:18px;margin:26px 0 8px}
+p{margin:0 0 12px}
+ul,ol{margin:0 0 14px;padding-left:1.3em}
+li{margin:0 0 5px}
+a{color:var(--l1)}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88em;background:var(--chip);padding:1px 5px;border-radius:4px}
+.meta{color:var(--muted);font-size:14px;margin:0 0 24px}
+.lead{font-size:18px;margin:0 0 20px}
+section{background:var(--sheet);border:1px solid var(--rule);border-radius:12px;padding:24px 22px;margin:0 0 20px}
+nav.toc{background:var(--sheet);border:1px solid var(--rule);border-radius:12px;padding:16px 22px;margin:0 0 20px;font-size:15px}
+nav.toc ol{margin:0;columns:2;column-gap:28px}
+@media (max-width:600px){nav.toc ol{columns:1}}
+.scroll{overflow-x:auto;margin:0 0 16px}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:15px}
+th,td{text-align:left;vertical-align:top;padding:9px 10px;border-bottom:1px solid var(--rule);line-height:1.55}
+th{font-size:13.5px;color:var(--muted);font-weight:700;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+.note{border-left:4px solid var(--warn);background:var(--warns);padding:12px 16px;margin:14px 0;border-radius:0 8px 8px 0}
+.note.ai{border-left-color:var(--ai);background:var(--ais)}
+.note.ok{border-left-color:var(--l2);background:var(--l2s)}
+.note p:last-child,.note ul:last-child{margin-bottom:0}
+.tag{display:inline-block;font-size:12.5px;font-weight:700;padding:1px 9px;border-radius:20px;white-space:nowrap}
+.t-done{background:var(--l2s);color:var(--l2)}
+.t-no{background:var(--warns);color:var(--warn)}
+.t-part{background:var(--l1s);color:var(--l1)}
+.t-ai{background:var(--ais);color:var(--ai)}
+.flow{display:grid;gap:10px;margin:8px 0 16px}
+.box{border:1px solid var(--rule);border-radius:10px;padding:12px 14px;background:var(--bg)}
+.box b{display:block}
+.box.l1{border-color:var(--l1);background:var(--l1s)}
+.box.l2{border-color:var(--l2);background:var(--l2s)}
+.box.ai{border-color:var(--ai);background:var(--ais)}
+.box small{color:var(--muted);font-size:13.5px}
+.arrow{text-align:center;color:var(--muted);font-size:14px;margin:-4px 0}
+.cols{display:grid;grid-template-columns:1fr;gap:12px}
+@media (min-width:720px){.cols{grid-template-columns:1fr 1fr}}
+pre{background:var(--bg);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:13.5px;line-height:1.6;margin:0 0 14px}
+dl.qa dt{font-weight:700;margin-top:14px}
+dl.qa dd{margin:4px 0 0}
+footer{color:var(--muted);font-size:13.5px;text-align:center;margin-top:28px}
+</style>
+</head>
+<body>
+<main>
+
+<h1>DOON AI 매크로 방어 계획</h1>
+<p class="meta">정리일 2026-10-14 · 기준 문서: 팀 설계서 "규칙 진화형 AI 매크로 방어"(10/7), 노션 "매크로 ai 문헌조사", <code>05-ai-macro-design-review.md</code>(10/13) · 최종평가 2026-10-30</p>
+<p class="lead"><b>한 줄 요약:</b> AI는 서울에서 로그를 학습해 <b>사람이 읽을 수 있는 규칙</b>을 만들고, 그 규칙만 PoP와 중앙에서 실행합니다. 사람 참가자를 모집할 수 없으므로 <b>사람 시뮬레이터 + 팀원 실기기 + 문헌 수치</b>로 검증합니다.</p>
+
+<nav class="toc" aria-label="목차">
+<ol>
+  <li><a href="#s1">목적과 원칙</a></li>
+  <li><a href="#s2">현재 상태</a></li>
+  <li><a href="#s3">전체 구조와 AI의 위치</a></li>
+  <li><a href="#s4">AI 구성 (보강안)</a></li>
+  <li><a href="#s5">규칙과 승격 기준</a></li>
+  <li><a href="#s6">검증 설계 (참가자 없이)</a></li>
+  <li><a href="#s7">조사로 바뀐 설계</a></li>
+  <li><a href="#s8">일정</a></li>
+  <li><a href="#s9">결정 사항</a></li>
+  <li><a href="#s10">예상 질문</a></li>
+  <li><a href="#s11">참고 자료</a></li>
+</ol>
+</nav>
+
+<section id="s1">
+<h2>1. 목적과 원칙</h2>
+<p>DOON은 선착순을 깨는 두 가지 불공정을 다룹니다. <b>거리의 차이</b>는 엣지 스탬핑으로, <b>도구의 차이(매크로)</b>는 이 계획으로 없앱니다. 1등이 봇이면 시각을 아무리 정밀하게 찍어도 공정하지 않기 때문입니다.</p>
+<ul>
+  <li><b>도착 시각을 모든 검사보다 먼저 찍습니다.</b> 탐지는 "자격"만 판단하고, 정상 사용자 사이의 순서는 바꾸지 않습니다.</li>
+  <li><b>실시간 판정 경로에는 AI 모델을 넣지 않습니다.</b> 지역 격차를 1~3ms 단위로 보정하는 시스템이 스스로 수 ms 지연을 만들면 안 됩니다. 규칙은 요청당 µs 단위로 끝납니다.</li>
+  <li><b>AI의 산출물은 읽을 수 있는 규칙입니다.</b> 개정 공연법(2026-08-28 시행)이 예매처에 요구하는 "근거 기록·재현"을 설명할 수 있습니다.</li>
+  <li><b>사는 곳과 연관된 피처는 금지합니다.</b> 지역, PoP, IP·ASN 대역, RTT, 시계 오프셋. 지방 사용자를 위한 시스템이 지방 사용자를 봇으로 몰면 안 됩니다.</li>
+</ul>
+</section>
+
+<section id="s2">
+<h2>2. 현재 상태 (2026-10-14 코드 확인)</h2>
+<div class="scroll"><table>
+<thead><tr><th>구성 요소</th><th>상태</th><th>실제 내용</th></tr></thead>
+<tbody>
+<tr><td>도착 시각 각인</td><td><span class="tag t-done">완료</span></td><td>PoP 미들웨어 최선두, µs 판정 배포됨</td></tr>
+<tr><td>로그인·JWT 신원</td><td><span class="tag t-done">완료</span></td><td>계정, 세션, 기기 지문, 계정 나이를 로그에 실음</td></tr>
+<tr><td>1차 필터 (PoP)</td><td><span class="tag t-part">일부</span></td><td><code>pop/first_layer.py</code>에 규칙 3개(차단 목록, 10초 30회, UA·Accept-Language)가 코드에 박혀 있음. 탐지만 하는 monitor 모드. 워커 4개라 빈도 제한이 약 4배 느슨함</td></tr>
+<tr><td>1차 판정 결과 기록</td><td><span class="tag t-no">없음</span></td><td>판정은 하지만(<code>pop_server.py:677</code>) <code>detection-log</code>에 넣지 않음 → AI가 "기존 규칙이 놓친 봇"을 구분할 수 없음</td></tr>
+<tr><td><code>detection-log</code> 항목</td><td><span class="tag t-part">일부</span></td><td>헤더 전체, 규칙 버전, µs 시각, 오픈 후 반응 시간 없음. IP는 위조 가능한 X-Forwarded-For 첫 값 사용. Kafka 보존 7일</td></tr>
+<tr><td>nginx 접속 제한</td><td><span class="tag t-part">새로 생김</span></td><td>팀원이 10/14 새벽 추가(미커밋, 판교에 적용됨). IP당 초당 50회, 내부 대역 제외. 1차 필터와 역할이 겹침</td></tr>
+<tr><td>2차 (중앙)</td><td><span class="tag t-no">없음</span></td><td>중앙은 판정 때 계정 정보를 보지 않음</td></tr>
+<tr><td>결제 보류(DEFER)·승계</td><td><span class="tag t-no">없음</span></td><td>결제 단계 자체가 없음(판정 = 확정). 경쟁자 상위 40명은 이미 저장됨</td></tr>
+<tr><td>3차 (서울)</td><td><span class="tag t-no">없음</span></td><td><code>seoul/collector.py</code>(로그 보관)만 있음</td></tr>
+<tr><td>규칙 형식·엔진·<code>bot-rules</code> 배포</td><td><span class="tag t-no">없음</span></td><td>설계서의 10/7~13 일정은 시작 전</td></tr>
+</tbody>
+</table></div>
+<div class="note"><p><b>가장 큰 위험은 "AI가 단순하다"가 아니라 "AI가 아직 없다"입니다.</b> 남은 16일 안에 3차를 실제로 돌리고 숫자를 내야 합니다.</p></div>
+</section>
+
+<section id="s3">
+<h2>3. 전체 구조와 AI의 위치</h2>
+<div class="flow">
+  <div class="box"><b>사용자 클릭</b></div>
+  <div class="arrow">↓</div>
+  <div class="box l1"><b>1차 · PoP (대전·판교)</b><small>도착 시각 기록 → 요청 하나만 보고 규칙 검사(헤더, 빈도, 차단 목록). AI 없음, 규칙만 실행</small></div>
+  <div class="arrow">↓</div>
+  <div class="box l2"><b>2차 · 판교 중앙</b><small>수집창 마감 때 계정·기기 상태로 규칙 검사. 봇이면 건너뛰고 다음 사람이 승자. AI 없음, 규칙만 실행</small></div>
+  <div class="arrow">↓</div>
+  <div class="box l2"><b>결제 보류 구간 (중앙)</b><small>확정 후 결제 전 몇 초. 쌓인 정보로 재평가 → 봇이면 회수하고 차순위에게 승계</small></div>
+  <div class="arrow">⋮ 로그가 KOREN으로 서울에 모임</div>
+  <div class="box ai"><b>3차 · 서울 AI Cloud ★ AI는 여기</b><small>놓친 봇 찾기 → 모델 학습 → 규칙으로 압축 → 검증 → 운영자 리포트</small></div>
+  <div class="arrow">↓ 운영자 승인</div>
+  <div class="box"><b>bot-rules 토픽으로 PoP·중앙에 배포</b><small>다음 오픈부터 적용. 오픈 중에는 규칙셋 버전 고정</small></div>
+</div>
+<p>AI는 "판사"가 아니라 <b>"규칙 만드는 연구원"</b> 역할입니다. 판정은 규칙이 하고, 그 규칙을 계속 새로 만들고 고치는 게 서울의 AI입니다.</p>
+</section>
+
+<section id="s4">
+<h2>4. AI 구성 (보강안)</h2>
+<p>"결국 if문 아니냐"는 지적에 대비해 설계서를 보강합니다. 모델은 서울에서 제대로 돌리고, 판정에는 검증된 규칙만 내려보냅니다.</p>
+<div class="scroll"><table>
+<thead><tr><th>보강</th><th>내용</th><th>왜</th><th>우선순위</th></tr></thead>
+<tbody>
+<tr><td><b>① 모델 → 규칙 압축</b></td><td>LightGBM으로 학습하고 SHAP으로 근거를 뽑은 뒤 깊이 3 규칙으로 압축(모델 증류). "규칙이 모델이 잡은 봇의 몇 %를 그대로 잡는지"(충실도)를 수치로 제시</td><td>AI가 실제로 있음을 성능 수치로 증명</td><td><span class="tag t-ai">필수</span></td></tr>
+<tr><td><b>② 전국 PoP 묶음 탐지</b></td><td>서울에 모인 전국 로그에서 같은 기기, 같은 시점 패턴, 같은 좌석 패턴을 공유하는 계정 그룹을 클러스터링. 대전·판교로 나눠 들어온 다계정 조직을 찾음</td><td>한 PoP에서는 안 보이고 KOREN으로 모아야만 보임. 프로젝트 목적과 직결</td><td><span class="tag t-part">권장</span></td></tr>
+<tr><td><b>③ 결제 보류 구간에서 모델 점수 활용</b></td><td>확정 후 결제 전 시간에 서울 모델 점수를 재평가 근거로 함께 봄. 최종 결정은 규칙과 운영자</td><td>AI가 리포트만이 아니라 판정에 참여. 실시간 경로가 아니라 지연 없음</td><td>결제 보류 구현 시</td></tr>
+<tr><td><b>④ 진화를 숫자로</b></td><td>1라운드 봇 점유율 X% → 규칙 학습 → 2라운드 Y%</td><td>"단순한데 효과가 있다"는 가장 강한 답</td><td><span class="tag t-ai">필수</span></td></tr>
+</tbody>
+</table></div>
+<h3>하지 않을 것</h3>
+<ul>
+  <li>실시간 판정 경로에 딥러닝 모델 넣기</li>
+  <li>"정확도 99%" 같은 숫자 하나로 주장하기 → 봇 수준별로 어디서 잡히고 어디서 놓치는지 공개</li>
+  <li>JA4(TLS 지문), 마우스·키 입력 수집, 자동 강등, 온라인 섀도 자동화 → 최종평가 이후</li>
+</ul>
+</section>
+
+<section id="s5">
+<h2>5. 규칙과 승격 기준</h2>
+<h3>규칙 형식</h3>
+<p>1차의 하드코딩 규칙을 먼저 이 형식으로 옮겨 규칙셋 v1을 만들고, AI가 만든 규칙도 같은 형식을 씁니다. 조건은 최대 3개입니다.</p>
+<pre><code>{
+  "id": "R-L2-0012", "version": 1, "layer": "L2",
+  "condition": {"all": [
+    {"feature": "click_offset_stdev_ms", "op": "&lt;",  "value": 5},
+    {"feature": "accounts_per_dfp",      "op": "&gt;=", "value": 4}
+  ]},
+  "action": "DEFER", "mode": "shadow",
+  "origin": "lgbm→tree-depth3",
+  "evidence": {"sim_human_fp": 0, "new_bots_caught": 27, "fidelity": 0.91},
+  "expires_after_events": 2, "approved_by": null
+}</code></pre>
+<p style="color:var(--muted);font-size:14px">설계서 예시의 "오픈 후 반응 80ms 미만"은 7절의 이유로 "여러 번 클릭 시점의 일정함"으로 바꿨습니다. 수치는 예시입니다.</p>
+
+<h3>생명주기</h3>
+<p>후보 → 저장 로그로 재현 → 섀도(최종평가에서는 학습에 안 쓴 로그로 대체) → 운영자 승인 → 만료(오픈 2회 후) 및 재평가. 처분은 LOG → DEFER → BLOCK 순서로만 올립니다. 모든 판정 로그에 규칙 ID와 규칙셋 버전을 남깁니다.</p>
+
+<h3>승격 기준 (실험 전에 git에 고정)</h3>
+<div class="scroll"><table>
+<thead><tr><th>기준</th><th>값</th><th>변경</th></tr></thead>
+<tbody>
+<tr><td>사람 오탐</td><td>사람 시뮬레이터(까다로운 사례 포함) 0건 + 막기 시작하는 지점과 사람 범위 사이 여유 보고 + 팀원 실기기 0건</td><td>참가자 0/n에서 변경</td></tr>
+<tr><td>추가 포착</td><td>기존 규칙이 놓친 검증용 봇 5건 이상, 그리고 10% 이상</td><td>유지</td></tr>
+<tr><td>최소 지지도</td><td>학습용 봇 10건 이상</td><td>유지</td></tr>
+<tr><td>기존 규칙과 중복</td><td>50% 미만</td><td>유지</td></tr>
+<tr><td>압축 충실도</td><td>모델이 잡은 봇 중 규칙이 잡은 비율 보고</td><td>추가</td></tr>
+<tr><td>평가 시간</td><td>요청당 p99 100µs 이하</td><td>유지</td></tr>
+<tr><td>안정성</td><td>서로 다른 분할로 재현 2회, 정밀도 차이 5%p 이하</td><td>유지</td></tr>
+</tbody>
+</table></div>
+</section>
+
+<section id="s6">
+<h2>6. 검증 설계 (참가자 없이)</h2>
+<p>사람 참가자를 모집할 수 없으므로, <b>규칙이 보는 정보를 세 종류로 나눠 각각 사람 없이 구합니다.</b></p>
+<div class="scroll"><table>
+<thead><tr><th>정보 종류</th><th>예시</th><th>사람 데이터 출처</th></tr></thead>
+<tbody>
+<tr><td><b>환경</b></td><td>헤더, UA, 기기 지문</td><td><b>팀원 실기기 6대</b>(휴대폰 2, 아이패드 2, 노트북 2) × 여러 브라우저. 사람이 아니라 브라우저·OS에 달린 값이라 기기 종류가 중요. 기록 페이지에 한 번씩 접속하면 자동 수집</td></tr>
+<tr><td><b>행동</b></td><td>클릭 시점, 새로고침 빈도, 노린 좌석 수</td><td><b>문헌 수치</b>: 반응 시간(Woods 2015), 예측 가능한 신호에 먼저 누르는 경향(Repp 2005), 실제 티켓 오픈 새로고침 빈도(ShmooCon). 출처와 숫자는 실험 전에 고정</td></tr>
+<tr><td><b>계정</b></td><td>계정 나이, 기기당 계정 수, 공유 IP</td><td><b>까다로운 정상 사례를 일부러 넣음</b>: 가족 한 기기 3계정, PC방·학교 공유 IP, 막 가입한 진짜 팬</td></tr>
+</tbody>
+</table></div>
+
+<h3>봇 사다리</h3>
+<div class="scroll"><table>
+<thead><tr><th>수준</th><th>내용</th><th>용도</th></tr></thead>
+<tbody>
+<tr><td>L0</td><td>curl, 스크립트</td><td>학습</td></tr>
+<tr><td>L1</td><td>기본 Playwright</td><td>학습</td></tr>
+<tr><td>L2</td><td>위장 플러그인 + UA 위조</td><td>학습</td></tr>
+<tr><td>L3</td><td>랜덤 지연, 사람 흉내</td><td><b>처음 보는 봇으로 시험</b></td></tr>
+<tr><td>L5</td><td>다계정, 대전·판교로 분산 접속</td><td>학습 + 보강안 ② 검증</td></tr>
+<tr><td>L4</td><td>LLM 브라우저 에이전트</td><td>비용 때문에 제외 또는 1회 시연</td></tr>
+</tbody>
+</table></div>
+
+<h3>실험 흐름 (규칙 진화 라운드)</h3>
+<ol>
+  <li><b>사전 등록:</b> 사람 수치 출처, 승격 기준, 실험 절차를 git에 커밋</li>
+  <li><b>1라운드:</b> 사람 시뮬레이터 + 봇 L0~L2, L5로 격리 환경에서 티켓 오픈 (규칙셋 v1)</li>
+  <li><b>서울:</b> 학습용 로그로 LightGBM 학습 → 깊이 3 규칙 압축 → 검증용 로그로 재현</li>
+  <li><b>2라운드:</b> 처음 보는 봇(L3) + 규칙을 보지 않은 팀원이 만든 변형 봇</li>
+  <li><b>비교:</b> 봇 좌석 점유율, 사람 오탐, 수준별 탐지, 압축 충실도</li>
+  <li><b>민감도 분석:</b> 사람 시뮬레이터를 점점 극단으로(더 빠르게, 더 자주) 밀어서 규칙이 사람을 막기 시작하는 지점을 찾고, 사람 범위와의 거리를 보고</li>
+  <li><b>마지막 확인:</b> 팀원 실기기로 직접 예매해 한 명도 안 막히는지 확인</li>
+</ol>
+
+<h3>측정 지표</h3>
+<div class="scroll"><table>
+<thead><tr><th>지표</th><th>의미</th></tr></thead>
+<tbody>
+<tr><td>봇 좌석 점유율 (라운드별)</td><td>발표 핵심 숫자</td></tr>
+<tr><td>사람 오탐 + 민감도 여유</td><td>실수요자 피해 없음, 어디까지 안전한지</td></tr>
+<tr><td>수준별 탐지 (L0~L5)</td><td>어디서 잡히고 어디서 뚫리는지</td></tr>
+<tr><td>추가 포착</td><td>새 규칙이 기존 규칙보다 더 잡은 봇</td></tr>
+<tr><td>압축 충실도</td><td>모델을 규칙으로 바꿔도 성능 유지</td></tr>
+<tr><td>순서 불변 (실험 C)</td><td>탐지 끄고/켜고 같은 트래픽 → 사람끼리 순서 동일</td></tr>
+<tr><td>지연 오버헤드 (실험 F)</td><td>규칙 평가 µs, PoP 처리 시간 p50·p99</td></tr>
+</tbody>
+</table></div>
+
+<h3>결과를 믿게 만드는 장치</h3>
+<ul>
+  <li><b>사전 등록:</b> 커밋 시각이 "결과를 보고 기준을 바꾸지 않았다"는 증거</li>
+  <li><b>정답표는 로그 밖에:</b> 로그·헤더에 봇 표시가 섞이면 결과가 가짜가 됨</li>
+  <li><b>봇 만드는 사람 ≠ 규칙 만드는 사람:</b> 2라운드 변형 봇은 규칙을 안 본 팀원이 제작</li>
+  <li><b>격리 환경:</b> 운영 중인 판교·대전이 아닌 별도 환경. 데이터셋은 해시로 고정해 재현 가능</li>
+  <li><b>(선택) 외부 데이터 확인:</b> ITI 공개 데이터셋에서도 "압축 후 성능 유지"가 나오는지 확인</li>
+</ul>
+
+<div class="note"><p><b>발표에서 먼저 말할 한계</b></p>
+<ul>
+  <li>사람 시뮬레이터도 프로그램이라 시뮬레이터 특유의 버릇을 학습할 위험이 있습니다. 피처를 세 종류로 제한하고 실기기로 따로 확인합니다.</li>
+  <li>사람 행동 수치는 문헌 기준이라 실제 티켓팅과 다를 수 있습니다. 민감도 분석으로 여유를 보여줍니다.</li>
+  <li>봇을 우리가 만들었으므로 결과는 "통제된 실험의 상한"입니다.</li>
+  <li>사람과 똑같이 행동하는 봇은 원리상 못 잡습니다. 목표는 공격 비용을 높이는 것입니다.</li>
+</ul></div>
+</section>
+
+<section id="s7">
+<h2>7. 조사로 바뀐 설계</h2>
+<div class="cols">
+<div class="box"><b>① 반응 시간 규칙 → 일정함 규칙</b>
+<p style="margin:6px 0 0">티켓 오픈은 카운트다운이 있어서 사람은 <b>반응하는 게 아니라 미리 맞춰 누릅니다</b>. 예측 가능한 신호에는 수십 ms 먼저 누르는 경향이 있습니다(Repp 2005). "반응 80ms 미만 = 봇"은 열심히 준비한 팬을 막습니다. 대신 <b>여러 라운드에 걸친 클릭 시점의 흔들림</b>을 봅니다. 사람은 매번 들쭉날쭉하고, 봇은 거의 같습니다.</p></div>
+<div class="box"><b>② 빈도 제한은 오픈 직전을 따로</b>
+<p style="margin:6px 0 0">ShmooCon 실제 오픈에서 직전 10초간 IP 948개가 초당 1,295번 새로고침했습니다(IP당 평균 약 1.4회/초). 현재 1차 기준 "10초 30회"(3회/초)는 경계선입니다. 오픈 직전과 평상시 기준을 나누고, nginx 제한과 역할을 정리합니다.</p></div>
+<div class="box"><b>③ 공유 IP는 정상</b>
+<p style="margin:6px 0 0">ShmooCon에서 여러 장을 산 IP는 대부분 회사·학교·관공서였습니다. IP 공유만으로는 봇 근거가 안 됩니다. 시뮬레이터에 공유 IP 정상 사례를 넣습니다.</p></div>
+<div class="box"><b>④ 기기 지문 의존 줄이기</b>
+<p style="margin:6px 0 0">기기 지문은 브라우저가 계산해 보내는 값이라 봇이 매번 바꿀 수 있습니다. "기기 하나에 계정 30개" 시나리오만으로는 L5에 쉽게 뚫립니다. 보강안 ②의 묶음 탐지로 보완합니다.</p></div>
+</div>
+<div class="note"><p><b>HTTP의 한계:</b> <code>Sec-Fetch-*</code>, Client Hints는 HTTPS에서만 브라우저가 보냅니다. HTTP로 가면 L1~L2 봇을 잡을 수단이 크게 줄어듭니다. 기기 지문 계산 방식도 바뀌므로, HTTPS로 간다면 <b>데이터 수집 전에</b> 전환해야 합니다.</p></div>
+</section>
+
+<section id="s8">
+<h2>8. 일정 (10/14 ~ 10/30)</h2>
+<div class="scroll"><table>
+<thead><tr><th>기간</th><th>할 일</th></tr></thead>
+<tbody>
+<tr><td><b>10/14~16</b></td><td>로그 보강(1차 판정 결과, 규칙 버전, 헤더, µs 시각, IP 수정) · 사전 등록 커밋 · 1차 규칙 JSON 형식 + 평가기 · HTTPS 결정 · nginx와 1차 필터 역할 정리 · 팀원 실기기 헤더 수집 페이지</td></tr>
+<tr><td><b>10/17~20</b></td><td>2차 엔진(계정 카운터, 창 마감 Lua를 "봇이 아닌 가장 빠른 사람"으로) · 결제 보류와 차순위 승계 · 사람 시뮬레이터 · 봇 L0~L3, L5 · 격리 실험 환경</td></tr>
+<tr><td><b>10/21~24</b></td><td>1라운드 → 서울 학습(LightGBM) → 규칙 압축 → 재현 검증 · (선택) ITI 데이터로 파이프라인 사전 점검</td></tr>
+<tr><td><b>10/25~27</b></td><td>2·3라운드 · 민감도 분석 · 팀원 실기기 확인 · 실험 C(순서 불변)·F(지연) · 보강안 ② 묶음 탐지</td></tr>
+<tr><td><b>10/28~30</b></td><td>결과 정리, 발표 자료와 시연 영상, 설계서 갱신(중복 4곳, "기본값 메모리" 등 실제와 다른 표기 수정)</td></tr>
+</tbody>
+</table></div>
+</section>
+
+<section id="s9">
+<h2>9. 결정 사항</h2>
+<h3>확정</h3>
+<ul>
+  <li>AI는 서울(3차)에만 둔다. 실시간 판정은 규칙만 실행</li>
+  <li>사람 참가자 모집 없음 → 사람 시뮬레이터 + 팀원 실기기 6대 + 문헌 수치로 검증</li>
+  <li>반응 시간 절대값 규칙은 쓰지 않고 일정함 피처로 대체</li>
+</ul>
+<h3>팀 결정 필요</h3>
+<div class="scroll"><table>
+<thead><tr><th>항목</th><th>추천</th></tr></thead>
+<tbody>
+<tr><td>HTTPS 적용</td><td>적용. 데이터 수집 전에 전환</td></tr>
+<tr><td>결제 보류·승계</td><td>실제 구현(경쟁자 상위 40명이 이미 저장되어 작게 가능)</td></tr>
+<tr><td>3차 방식</td><td>트리 앙상블 → 깊이 3 규칙 압축</td></tr>
+<tr><td>L4 (LLM 에이전트)</td><td>제외 또는 1회 시연</td></tr>
+<tr><td>nginx 제한 vs 1차 필터</td><td>nginx는 과부하 방어, 봇 판단과 기록은 1차 필터로 일원화</td></tr>
+<tr><td>ITI 데이터셋 사용</td><td>파이프라인 사전 점검용으로만. 일정이 빠듯하면 생략</td></tr>
+</tbody>
+</table></div>
+</section>
+
+<section id="s10">
+<h2>10. 예상 질문</h2>
+<dl class="qa">
+<dt>AI가 결국 if문 아닌가요?</dt>
+<dd>모델은 서울에서 LightGBM으로 학습하고, 판정에는 그 모델을 압축한 규칙만 내려보냅니다. 압축 후에도 모델이 잡은 봇의 몇 %를 유지하는지 수치로 보여드립니다. 실시간 경로에 모델을 넣지 않은 것은 지연과 설명 책임 때문에 의도한 설계입니다.</dd>
+<dt>사람 데이터 없이 오탐을 어떻게 아나요?</dt>
+<dd>헤더는 실제 기기에서, 행동은 문헌 수치에서 가져와 사람 시뮬레이터를 만들었습니다. 시뮬레이터를 극단까지 밀어서 규칙이 사람을 막기 시작하는 지점을 찾고, 그 지점이 사람 범위에서 얼마나 떨어져 있는지 보고합니다. 마지막으로 실제 기기로 직접 예매해 확인했습니다.</dd>
+<dt>봇도 사람도 직접 만들었으면 결과가 유리하게 나오지 않나요?</dt>
+<dd>기준을 실험 전에 커밋했고, 2라운드 봇은 규칙을 보지 않은 팀원이 만들었으며, 학습에 쓰지 않은 봇 수준(L3)으로 평가했습니다. 결과는 통제된 실험의 상한이라고 밝힙니다.</dd>
+<dt>빨리 누르는 진짜 팬이 봇으로 걸리지 않나요?</dt>
+<dd>반응 속도 자체는 판단에 쓰지 않습니다. 카운트다운이 있으면 사람도 미리 맞춰 누르기 때문입니다. 대신 여러 번에 걸쳐 "기계처럼 똑같은지"를 봅니다. 그리고 처분은 결제 보류부터 시작해 좌석을 바로 빼앗지 않습니다.</dd>
+<dt>상용 봇 차단 서비스와 무엇이 다른가요?</dt>
+<dd>탐지가 공정성 판정 순서를 건드리지 않는 구조(실험 C), 전국 PoP 로그를 KOREN으로 모아야만 보이는 분산 봇 탐지, 판정 근거의 기록·재현입니다.</dd>
+</dl>
+</section>
+
+<section id="s11">
+<h2>11. 참고 자료</h2>
+<ul>
+  <li>Woods, D. L. 외. Factors influencing the latency of simple reaction time. Frontiers in Human Neuroscience 9:131, 2015 — 1,469명, 평균 231ms(장비 지연 보정 213ms). <a href="https://www.frontiersin.org/journals/human-neuroscience/articles/10.3389/fnhum.2015.00131/full">링크</a></li>
+  <li>Repp, B. H. Sensorimotor synchronization: A review of the tapping literature. Psychonomic Bulletin &amp; Review 12(6), 2005 — 예측 가능한 신호보다 수십 ms 먼저 누름. <a href="https://www.doi.org/10.3758/BF03206433">링크</a></li>
+  <li>ShmooCon 티켓 판매 통계 — 실제 오픈 직전 새로고침 빈도, 공유 IP 구매. <a href="https://shmoocon.org/?p=2443">2022 2라운드</a>, <a href="https://shmoocon.org/?p=692">2018</a>, <a href="https://shmoocon.org/?p=991">2019</a>, <a href="https://shmoocon.org/?p=2650">2023</a></li>
+  <li>Iliou, C. 외. Detection of Advanced Web Bots by Combining Web Logs with Mouse Behavioural Biometrics. Digital Threats: Research and Practice 2(3), 2021. <a href="https://dl.acm.org/doi/10.1145/3447815">논문</a> · <a href="https://m4d.iti.gr/web-bot-detection-dataset/">데이터셋</a>(사람 106세션 + 봇, CC BY-NC-SA)</li>
+  <li>팀 설계서 "규칙 진화형 AI 매크로 방어"(10/7) — FP-Inconsistent(IMC 2025), BOTracle(ESORICS 2024 워크숍) 등 문헌 포함</li>
+  <li>노션 "매크로 ai 문헌조사"</li>
+  <li>저장소 <code>docs/research/</code>: 01 부하 테스트, 05 AI 매크로 설계 검토</li>
+</ul>
+<p style="color:var(--muted);font-size:14px">조사 범위에서 티켓팅·수강신청 오픈 순간의 사람 클릭 시점을 담은 공개 데이터는 찾지 못했습니다.</p>
+</section>
+
+<footer>DOON · KOREN 기반 공정 티켓팅 · AI 매크로 방어 계획 (2026-10-14)</footer>
+</main>
+</body>
+</html>

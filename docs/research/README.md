@@ -25,6 +25,7 @@
 | [05-ai-macro-design-review.md](05-ai-macro-design-review.md) | 팀의 "규칙 진화형 AI 매크로 방어" 설계서 검토, 코드와의 차이, 적용 방안, 검증 대비, HTTPS 필요성 |
 | [06-regional-gap.md](06-regional-gap.md) | 지역 격차 실측: 전국 가정용 회선→서울 지연(RIPE Atlas 7일), DOON PoP→중앙 지연, 대기 순번 환산 |
 | [07-pitch-script.md](07-pitch-script.md) | 발표 원고 (기존 기술 이해 → 독창성 → 실용적 구현, 실측 숫자 반영) |
+| [08-ai-macro-plan.html](08-ai-macro-plan.html) | AI 매크로 방어 계획 총정리 (2026-10-14): AI 위치, 보강안, 참가자 없는 검증 설계, 조사로 바뀐 설계, 일정, 결정 사항 |
 
 ## 핵심 결론 요약
 

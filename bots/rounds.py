@@ -37,6 +37,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--every", type=int, default=2, help="회차 간격(분). seat.html?every= 와 같게")
     ap.add_argument("--rounds", type=int, default=10)
+    ap.add_argument("--first", type=int, default=1, help="회차 번호 시작 (같은 --out 에 이어 붙일 때)")
     ap.add_argument("--base", default="http://localhost:13198", help="봇이 겨눌 PoP (쉼표로 여러 개)")
     ap.add_argument("--copies", type=int, default=1, help="봇 종류마다 몇 개씩")
     ap.add_argument("--humans", type=int, default=0, help="시뮬레이터 사람 수 (격리 실험판 전용)")
@@ -51,11 +52,11 @@ def main():
         subprocess.run(["docker", "build", "-q", "-t", IMAGE, HERE], check=True)
 
     period = a.every * 60
-    for r in range(1, a.rounds + 1):
+    for r in range(a.first, a.first + a.rounds):
         open_at = (int(time.time() + 45) // period + 1) * period  # 브라우저 봇 준비 시간 확보
         at = datetime.fromtimestamp(open_at).strftime("%H:%M:%S.000")
         time.sleep(max(0, open_at - 40 - time.time()))
-        print(f"[{r}/{a.rounds}] {at} 오픈 — 봇 출발")
+        print(f"[{r}/{a.first + a.rounds - 1}] {at} 오픈 — 봇 출발")
 
         bases = a.base.split(",")
         n = 3 * a.copies

@@ -65,7 +65,7 @@ flowchart LR
 | 구성 요소 | 역할 |
 |---|---|
 | PoP | 요청 도착 시각 기록, 시계 오차 첨부, 토큰 로컬 검증, 1차 봇 필터 |
-| Central | 좌석별 5초 수집창, `도착 시각 + 시계 오차` 기준 승자 판정, 확정 기록 |
+| Central | 좌석별 수집창(PoP→중앙 지연으로 자동 산정, 시연 구성은 3초 고정), `도착 시각 + 시계 오차` 기준 승자 판정, 확정 기록 |
 | Kafka | `seat-requests`, `seat-status`, `detection-log` |
 | chrony | 모든 PoP가 동일한 외부 NTP를 기준으로 오차 측정 |
 | Seoul AI Cloud | `detection-log` 장기 보관 및 학습 데이터 구성 |

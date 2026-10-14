@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="840" viewBox="0 0 600 840">
+  <!-- 시연용 가상 공연 포스터 (실제 아티스트·이미지 아님) -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1f3b"/><stop offset="1" stop-color="#B3560A"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="840" fill="url(#bg)"/>
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="2">
+    <circle cx="300" cy="360" r="120"/><circle cx="300" cy="360" r="190"/><circle cx="300" cy="360" r="260"/>
+  </g>
+  <circle cx="300" cy="360" r="56" fill="#ffffff" fill-opacity="0.9"/>
+  <text x="300" y="120" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="30" letter-spacing="8" fill-opacity="0.8">KOREN PRESENTS</text>
+  <text x="300" y="660" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="78" font-weight="800" letter-spacing="4">DOON LIVE</text>
+  <text x="300" y="720" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="36" letter-spacing="10">TOUR 2026</text>
+  <text x="300" y="790" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="20" fill-opacity="0.75">공정 티켓팅 시연용 가상 공연</text>
+</svg>

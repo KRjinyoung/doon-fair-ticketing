@@ -66,7 +66,6 @@ body { margin:0; background:#fafafa; color:#222;
     <div class="brandline"><b>DOON</b>티켓팅에 공정을 담다. with KOREN</div>
     <div class="util">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-      <span>로그인</span>
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg>
     </div>
   </div>
@@ -83,7 +82,7 @@ body { margin:0; background:#fafafa; color:#222;
 
     <div class="card">
       <div class="ct">예매 정보</div>
-      <div class="row"><div class="k">공연</div><div class="v">임영웅 : IM HERO TOUR 2026</div></div>
+      <div class="row"><div class="k">공연</div><div class="v">DOON LIVE TOUR 2026</div></div>
       <div class="row"><div class="k">일시</div><div class="v" id="showDate">-</div></div>
       <div class="row"><div class="k">장소</div><div class="v">인천 송도컨벤시아</div></div>
       <div class="row"><div class="k">좌석</div><div class="v pick" id="seatTxt">-</div></div>
@@ -201,7 +200,7 @@ payBtn.addEventListener('click', function () {
   setTimeout(function () {
     // 예매번호: 좌석과 시각으로 만든 표시용 값. 실제 결제/발권 연동은 범위 밖.
     var no = 'DOON-' + Date.now().toString(36).toUpperCase().slice(-6) + '-' + seat;
-    document.getElementById('doneSeat').textContent = '임영웅 : IM HERO TOUR 2026  ·  ' + seat;
+    document.getElementById('doneSeat').textContent = 'DOON LIVE TOUR 2026  ·  ' + seat;
     document.getElementById('bookNo').textContent = no;
     document.getElementById('payView').style.display = 'none';
     document.getElementById('doneView').style.display = 'block';

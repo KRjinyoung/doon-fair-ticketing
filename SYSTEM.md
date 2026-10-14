@@ -85,12 +85,14 @@ PoP 안에서의 처리 순서 (미들웨어는 바깥쪽부터):
 2. `apply_seat_request()`
    - 이미 확정된 좌석이면 `already_confirmed`로 즉시 거절.
    - **`corrected_epoch_ms = pop_arrival_epoch_ms + clock_offset_ms_measured`** ← 보정이 일어나는 유일한 지점.
-   - 해당 좌석의 첫 요청이면 **수집창(`WINDOW_SECONDS = 5초`)** 을 열고 타이머를 건다. 아니면 버퍼에 추가.
+   - 해당 좌석의 첫 요청이면 **수집창**을 열고 타이머를 건다. 아니면 버퍼에 추가.
+     수집창 길이는 PoP→중앙 지연(p99 × `WINDOW_MARGIN` 1.5)에서 자동으로 정하고 `WINDOW_MIN_MS`~`WINDOW_MAX_MS`(기본 20~500ms)로 묶는다.
+     판교 시연 구성(`docker-compose.pangyo.yml`)은 화면에서 경쟁이 보이도록 **3초로 고정**한다(`WINDOW_MS`, 기본 3000).
    - `seat-status`에 `pending {requests_so_far}` 발행 (휘발성이라 DB와 무관하게 즉시).
-3. 5초 후 `close_window_after_delay()`
+3. 수집창이 닫히면 `close_window_after_delay()`
    - `corrected_epoch_ms` 오름차순 정렬 → **1등이 승자**. 1·2등 격차를 `winner_margin_ms`로 기록.
    - **Postgres `confirmed_seats` INSERT(ON CONFLICT UPDATE, 최대 3회 재시도)** 가 먼저.
-   - **커밋 성공한 뒤에만** `seat-status`에 `confirmed {winner_request_id, winner_pop_id, winner_timestamp_ms, all_requests(최대 20)}` 발행.
+   - **커밋 성공한 뒤에만** `seat-status`에 `confirmed {winner_request_id, winner_pop_id, winner_timestamp_ms, all_requests(기본 최대 20, 시연 구성 40)}` 발행.
      실패하면 그대로 return — "DB에 없는 확정 이벤트"가 나가지 않게 하는 불변식.
 
 ### 3-4. 결과 전파와 결제

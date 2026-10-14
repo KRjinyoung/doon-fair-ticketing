@@ -105,6 +105,8 @@ KAFKA_TOPIC_SEAT_STATUS = "seat-status"
 KAFKA_TOPIC_DETECTION_LOG = "detection-log"
 
 kafka_producer: AIOKafkaProducer | None = None
+# detection-log 전용. 판정용 전송기와 묶음을 섞지 않으려고 따로 둔다.  [DETLOG_V2]
+detlog_producer: AIOKafkaProducer | None = None
 
 # central이 발행하는 seat-status 이벤트를 받아 채우는 로컬 캐시.
 # { seat_id: {"status": "pending"|"confirmed", ...} }
@@ -215,7 +217,7 @@ async def kafka_consume_status_loop():
             print(f"[{POP_ID}] seat-status consumer 시작됨 (group={group_id})")
             async for msg in consumer:
                 data = msg.value
-                seat_status_cache[data["seat_id"]] = data
+                if not (data.get("status") == "pending" and seat_status_cache.get(data["seat_id"], {}).get("status") == "confirmed"): seat_status_cache[data["seat_id"]] = data
                 pop_seat_status_consumed_total.labels(
                     pop_id=POP_ID, status=data.get("status", "unknown")
                 ).inc()
@@ -235,7 +237,7 @@ async def safe_publish_detection_log(payload: dict):
     실패해도 예약 자체를 막으면 안 된다 — 그래서 별도 태스크로 fire-and-forget.
     """
     try:
-        await kafka_producer.send(  # [CAP_V1] 응답을 기다리지 않는다
+        await detlog_producer.send(  # [CAP_V1] 응답을 기다리지 않는다
             KAFKA_TOPIC_DETECTION_LOG, key=payload["seat_id"], value=payload
         )
         pop_kafka_published_total.labels(pop_id=POP_ID, topic=KAFKA_TOPIC_DETECTION_LOG).inc()
@@ -248,7 +250,7 @@ async def safe_publish_detection_log(payload: dict):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global kafka_producer, http_client
+    global kafka_producer, detlog_producer, http_client
 
     # 연결을 재사용하는 공용 클라이언트. keepalive를 켜두면 중계기를 거치는
     # 대전 환경에서도 TCP 연결이 몇 개로 고정된다.
@@ -275,6 +277,22 @@ async def lifespan(app: FastAPI):
             print(f"[{POP_ID}] Kafka 연결 실패 (재시도 {attempt + 1}/10): {e}")
             await asyncio.sleep(3)
 
+    # *** detection-log 는 최대 1초 모았다가 큰 묶음으로 보낸다 ***  [DETLOG_V2]
+    # 서울 학습용이라 1초 늦어도 된다. 판정용 전송기와 같이 쓰면 로그(1.5KB/건)가
+    # 16KB 묶음을 잘게 쪼개 PoP 처리량이 약 40% 떨어졌다(격리 측정 2026-10-14).
+    # 대가: PoP 가 죽으면 아직 안 보낸 최대 1초치 로그를 잃는다.
+    detlog_producer = AIOKafkaProducer(
+        bootstrap_servers=KAFKA_BROKER,
+        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+        key_serializer=lambda k: k.encode("utf-8") if k is not None else None,
+        linger_ms=1000,
+        max_batch_size=524288,
+    )
+    try:
+        await detlog_producer.start()
+    except Exception as e:
+        print(f"[{POP_ID}] detection-log producer 시작 실패: {e}")
+
     status_consumer_task = asyncio.create_task(kafka_consume_status_loop())
     # 전달 지연 상시 측정용 발신  [HEARTBEAT_V1]
     heartbeat_task = asyncio.create_task(heartbeat_send_loop())
@@ -284,6 +302,7 @@ async def lifespan(app: FastAPI):
     clock_task.cancel()
     status_consumer_task.cancel()
     await kafka_producer.stop()
+    await detlog_producer.stop()
     if http_client is not None:
         await http_client.aclose()
 
@@ -401,12 +420,9 @@ async def receive_seat_request(req: SeatRequest, request: Request):
     # 오프셋이 작은 PoP 가 늘 이기는 지역 편향이다. 오프셋 정밀도(1us)에 맞춘다.
     epoch_us = _edge_ns // 1_000
 
-    # nginx가 X-Forwarded-For/X-Real-IP를 붙여주므로 그걸 우선 쓰고, 없으면
-    # 소켓 레벨의 접속 IP로 폴백한다 (로컬 직접 접속 테스트 등).
-    forwarded_for = request.headers.get("x-forwarded-for", "")
-    client_ip = forwarded_for.split(",")[0].strip() if forwarded_for else (
-        request.client.host if request.client else "unknown"
-    )
+    # X-Forwarded-For 의 첫 값은 클라이언트가 마음대로 써 넣을 수 있다.
+    # 1차 필터와 같은 함수로 nginx 가 직접 본 마지막 값을 쓴다.  [DETLOG_V2]
+    client_ip = _fl.client_ip_of(request)
     user_agent = request.headers.get("user-agent", "unknown")
 
     record = {
@@ -473,6 +489,12 @@ async def receive_seat_request(req: SeatRequest, request: Request):
                 "client_ip": client_ip,
                 "user_agent": user_agent,
                 "logged_at": arrival_time.isoformat(),
+                # [DETLOG_V2] 서울 AI 학습 재료. 오픈 후 반응 시간은 여기서 계산하지 않고
+                # 서울에서 (보정 도착 시각 - 실험별 오픈 시각)으로 구한다.
+                "pop_arrival_epoch_us": epoch_us,
+                "clock_offset_ms_measured": offset_ms,
+                "client_sent_at": req.client_sent_at,
+                **_first_layer_payload(request),
                 # *** 매크로 탐지의 핵심 특징 ***
                 # 같은 account_id 가 여러 좌석을 동시에 노리는지,
                 # 같은 device_fp 에 계정이 몇 개 붙어 있는지,
@@ -666,6 +688,12 @@ async def _bot_filter_middleware(request, call_next):
         # 폴링 봇에게는 429 를 주는 편이 의미가 맞고, 정상 사용자가
         # 오탐된 경우에도 잠시 뒤 재시도하면 풀린다는 신호가 된다.
         code = 429 if verdict.reason == "rate_limit" else 403
+        # 막힌 좌석 요청은 핸들러까지 안 가서 detection-log 에 안 남는다.
+        # "1차가 무엇을 막았나"를 서울이 알 수 있게 여기서 한 줄 남긴다.
+        # 좌석 요청만 남긴다. 폴링까지 남기면 봇 한 대가 Kafka 를 채운다.  [DETLOG_V2]
+        if request.url.path == "/seat-request":
+            request.state.bot_verdict = verdict
+            await _log_first_layer_block(request, ip)
         return _BFJSONResponse(status_code=code, content={
             "error": "blocked_by_first_layer",
             "reason": verdict.reason,
@@ -676,6 +704,39 @@ async def _bot_filter_middleware(request, call_next):
     # 나중에 detection-log 로 서울 AI Cloud 에 보낼 때 학습 라벨로 쓴다.
     request.state.bot_verdict = verdict
     return await call_next(request)
+
+
+def _first_layer_payload(request) -> dict:
+    """detection-log 에 붙일 1차 판정 결과와 헤더.  [DETLOG_V2]
+    first_layer_passed 가 None 이면 필터가 꺼져 있어 판정하지 않은 것이다."""
+    verdict = getattr(request.state, "bot_verdict", None)
+    return {
+        "ruleset_version": _fl.RULESET_VERSION,
+        "first_layer_mode": _fl.MODE,
+        "first_layer_passed": verdict.passed if verdict else None,
+        "first_layer_reason": (verdict.reason or None) if verdict else None,
+        "headers": _fl.header_snapshot(request),
+    }
+
+
+async def _log_first_layer_block(request, ip: str):
+    """enforce 모드에서 막은 좌석 요청을 detection-log 에 남긴다.  [DETLOG_V2]"""
+    edge_ns = getattr(request.state, "edge_arrival_ns", None) or time.time_ns()
+    identity = getattr(request.state, "identity", None) or _pa.ANONYMOUS
+    asyncio.create_task(safe_publish_detection_log({
+        "event_type": "first_layer_block",
+        "seat_id": None,  # 막힌 요청은 본문을 읽지 않는다
+        "request_id": str(uuid.uuid4()),
+        "pop_id": POP_ID,
+        "pop_arrival_epoch_ms": edge_ns // 1_000_000,
+        "pop_arrival_epoch_us": edge_ns // 1_000,
+        "clock_offset_ms_measured": round(clock_offset_ms, 3),
+        "client_ip": ip,
+        "user_agent": request.headers.get("user-agent", "unknown"),
+        "logged_at": datetime.fromtimestamp(edge_ns / 1e9, timezone.utc).isoformat(),
+        **identity.as_payload(),
+        **_first_layer_payload(request),
+    }))
 
 
 @app.get("/bot-filter")

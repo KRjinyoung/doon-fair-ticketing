@@ -22,7 +22,7 @@ collector.py -- 서울(치타) pod 에서 detection-log 를 계속 읽어 home �
 
 [실행]
     pip install kafka-python
-    nohup python3 collector.py > ~/collector.log 2>&1 &
+    nohup python3.11 collector.py > ~/collector.log 2>&1 &   # 치타: pip 는 3.11 용
   같은 보관 폴더로 두 개가 동시에 돌지 않도록 잠금 파일을 잡는다.
   pod 가 재시작되면 프로세스는 사라지므로 다시 실행해야 한다
   (오프셋은 Kafka 에 커밋되어 있어 이어서 읽는다).

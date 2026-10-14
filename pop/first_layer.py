@@ -100,6 +100,39 @@ EXEMPT_PATHS = frozenset({"/metrics", "/health", "/clock-offset"})
 BOT_UA_TOKENS = ("python", "curl", "wget", "go-http",
                  "java", "scrapy", "headless", "bot")
 
+# 지금 돌고 있는 규칙의 이름. detection-log 에 함께 남겨서, 나중에 같은 로그를
+# 같은 규칙으로 다시 돌렸을 때 같은 판정이 나오는지 확인할 수 있게 한다.
+# 규칙을 바꾸면 이 값도 바꾼다.  [DETLOG_V2]
+RULESET_VERSION = "v0-hardcoded"
+
+# detection-log 에 값까지 남기는 헤더. 이름은 전부, 값은 이 목록만 남긴다.
+# authorization(로그인 토큰)과 cookie 는 서울에 쌓이면 안 되므로 절대 넣지 않는다.
+# x-forwarded-for 는 client_ip 로 따로 남기므로 뺀다.  [DETLOG_V2]
+LOG_HEADER_VALUES = frozenset({
+    "user-agent", "accept", "accept-language", "accept-encoding",
+    "referer", "origin", "content-type", "connection", "cache-control", "pragma",
+    "sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest", "sec-fetch-user",
+    "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform",
+    "upgrade-insecure-requests", "dnt", "priority",
+})
+
+
+def header_snapshot(request) -> dict:
+    """
+    봇 탐지용 헤더 기록.  [DETLOG_V2]
+      order  : 브라우저가 보낸 순서 그대로의 헤더 이름. 진짜 브라우저와 HTTP 라이브러리는
+               순서가 다른 경우가 많아 그 자체로 신호가 된다.
+      values : LOG_HEADER_VALUES 에 있는 헤더의 값 (200자로 자름)
+    nginx 가 붙이는 x-real-ip / x-forwarded-* 도 order 에는 나오지만 값은 남기지 않는다.
+    """
+    order, values = [], {}
+    for k, v in request.headers.raw:
+        name = k.decode("latin-1").lower()
+        order.append(name)
+        if name in LOG_HEADER_VALUES:
+            values[name] = v.decode("latin-1")[:200]
+    return {"order": order, "values": values}
+
 
 # ================================================================
 #  결과 타입
@@ -338,3 +371,12 @@ def stats() -> dict:
         "synthetic_key_enabled": bool(SYNTHETIC_KEY),
         "exempt_paths": sorted(EXEMPT_PATHS),
     }
+
+
+if __name__ == "__main__":
+    # 자체 점검: 토큰·쿠키 값은 절대 기록되지 않아야 한다.  python first_layer.py
+    from types import SimpleNamespace
+    raw = [(b"Authorization", b"Bearer SECRET"), (b"Cookie", b"sid=SECRET"), (b"User-Agent", b"Mozilla")]
+    snap = header_snapshot(SimpleNamespace(headers=SimpleNamespace(raw=raw)))
+    assert "SECRET" not in str(snap["values"]) and snap["order"][:2] == ["authorization", "cookie"], snap
+    print("ok")

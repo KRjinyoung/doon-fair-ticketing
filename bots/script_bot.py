@@ -9,12 +9,13 @@
   python3 script_bot.py --base http://localhost:18000 --at 21:00:00.000
   python3 script_bot.py --base ... --disguise --email bot01@doon.kr --at 21:00:00.000
 
-반드시 격리된 시험 환경을 겨눈다. 운영 판교/대전에는 쏘지 않는다.
+격리된 시험 환경이나, 사람과 합의한 수집 시간의 운영 판교(rounds.py)에만 쏜다.
 """
 
 import argparse
 import json
 import os
+import random
 import sys
 import time
 import urllib.error
@@ -55,7 +56,7 @@ def main():
     ap.add_argument("--email", help="봇 계정 (없으면 익명)")
     ap.add_argument("--password", default="doon1234")
     ap.add_argument("--device-fp", default="macro-farm-01", help="계정 여러 개가 같은 기기를 쓴다")
-    ap.add_argument("--seat", help="노릴 좌석 (없으면 남은 첫 좌석)")
+    ap.add_argument("--seat", help="노릴 좌석 (없으면 남은 좌석 중 무작위)")
     ap.add_argument("--at", help="발사 시각 hh:mm:ss.fff (없으면 즉시)")
     a = ap.parse_args()
 
@@ -69,18 +70,22 @@ def main():
         if code != 200:
             sys.exit(f"로그인 실패 {code}: {data}")
         h["Authorization"] = "Bearer " + data["token"]
+        account_id = data.get("account_id")
+    else:
+        account_id = None
 
     seat = a.seat
     if not seat:  # 오픈 전에 미리 빈 좌석을 골라둔다 (매크로는 고민하지 않는다)
         code, taken = call(a.base, "/seats-overview", h)
         taken = taken if code == 200 else {}
-        seat = next(s for s in all_seats() if taken.get(s) in (None, "available"))
+        seat = random.choice([s for s in all_seats() if taken.get(s) in (None, "available")])
 
     if a.at:
         wait_until(a.at)
     t0 = time.time()
     code, data = call(a.base, "/seat-request", h, {"seat_id": seat})
     print(json.dumps({"bot": "disguised" if a.disguise else "simple", "account": a.email,
+                      "account_id": account_id,
                       "seat": seat, "fired_at": datetime.fromtimestamp(t0).isoformat(timespec="milliseconds"),
                       "status": code, "reply": data if code != 200 else data.get("request_id")},
                      ensure_ascii=False))

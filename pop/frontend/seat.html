@@ -473,7 +473,8 @@ async function pollForResult(id, myRequestId) {
         reserveResult.innerHTML =
           '<div style="color:#2f7d4a;font-weight:700;">축하합니다! 좌석 ' + id + ' 획득</div>' +
           '<div class="status-text">결제 페이지로 이동합니다...</div>';
-        setTimeout(() => {
+        // 수집 회차(?every=)에서는 결제로 넘어가지 않고 다음 회차를 기다린다  [ROUNDS_V1]
+        if (!new URLSearchParams(location.search).get('every')) setTimeout(() => {
           window.location.href = '/payment.html?seat_id=' + id + '&request_id=' + myRequestId;
         }, 1200);
       } else {
@@ -527,6 +528,32 @@ async function refreshPopInfo() {
 refreshPopInfo();
 setInterval(refreshPopInfo, 5000);
 
+</script>
+
+<!-- 수집 회차용 오픈 카운트다운  [ROUNDS_V1]
+     seat.html?every=2 로 열면 2분마다 정각(기기 시계 기준)에 '오픈'한다.
+     오픈 전에는 좌석만 고를 수 있고 예약하기 버튼은 잠긴다. 오픈 후 30초 동안 열린다.
+     봇은 이 잠금을 무시하고 API 를 바로 친다 — 실제 예매 사이트와 같은 구조다.
+     bots/rounds.py 가 같은 규칙(every 분의 배수)으로 회차 시각을 기록한다. -->
+<script>
+(function () {
+  var every = +new URLSearchParams(location.search).get('every');
+  if (!every) return;
+  var period = every * 60000, wasOpen = false;
+  var bar = document.createElement('div');
+  bar.style.cssText = 'position:sticky;top:0;z-index:999;padding:12px;text-align:center;' +
+                      'font:700 22px sans-serif;color:#fff;background:#222';
+  document.body.prepend(bar);
+  setInterval(function () {
+    var now = Date.now(), since = now % period, open = since < 30000;
+    bar.textContent = open ? '오픈! ' + (since / 1000).toFixed(1) + '초 경과'
+                           : '다음 오픈까지 ' + Math.ceil((period - since) / 1000) + '초';
+    bar.style.background = open ? '#c62828' : '#222';
+    if (!open) reserveBtn.disabled = true;
+    else if (!wasOpen && selectedSeatId) reserveBtn.disabled = false;
+    wasOpen = open;
+  }, 50);
+})();
 </script>
 
 <!-- 로그인 상태 표시  [FRONTAUTH_V1] -->

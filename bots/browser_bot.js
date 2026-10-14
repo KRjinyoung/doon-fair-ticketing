@@ -11,7 +11,7 @@
  *   docker run --rm --network <시험망> -e BASE=http://pop:8000 -e AT=21:00:00.000 \
  *     -e EMAIL=bot02@doon.kr -e STEALTH=1 doon-browser-bot
  *
- * 반드시 격리된 시험 환경을 겨눈다. 운영 판교/대전에는 쏘지 않는다.
+ * 격리된 시험 환경이나, 사람과 합의한 수집 시간의 운영 판교(rounds.py)에만 쏜다.
  */
 const puppeteer = require('puppeteer-extra');
 const { BASE, AT, EMAIL, PASSWORD = 'doon1234', SEAT, STEALTH = '1' } = process.env;
@@ -45,8 +45,10 @@ function msUntil(hms) {           // 오늘 hh:mm:ss.fff 까지 남은 ms
     await Promise.all([page.waitForNavigation(), page.click('#loginBtn')]);
   }
 
-  const sel = SEAT ? `.mini-seat[data-seat-id="${SEAT}"]` : '.mini-seat.available';
-  await page.waitForSelector(sel);
+  await page.waitForSelector('.mini-seat.available');
+  const seatId = SEAT || await page.$$eval('.mini-seat.available',   // 남은 좌석 중 무작위
+    els => els[Math.floor(Math.random() * els.length)].dataset.seatId);
+  const sel = `.mini-seat[data-seat-id="${seatId}"]`;
 
   if (AT) {                       // 마지막 50ms 는 바쁜 대기로 맞춘다
     const left = msUntil(AT);
@@ -60,7 +62,8 @@ function msUntil(hms) {           // 오늘 hh:mm:ss.fff 까지 남은 ms
   await page.click('#reserveBtn');
   const res = await reply;
   const ua = await page.evaluate(() => navigator.userAgent);  // 서버가 본 값
-  out({ stage: 'seat', seat, fired_at: firedAt, status: res.status(),
+  const accountId = await page.evaluate(() => localStorage.getItem('doon_account_id'));
+  out({ stage: 'seat', seat, account_id: accountId || null, fired_at: firedAt, status: res.status(),
         reply: (await res.text()).slice(0, 200), user_agent: ua });
   await browser.close();
 })().catch(e => { console.error(e); process.exit(1); });

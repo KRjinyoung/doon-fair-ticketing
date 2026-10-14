@@ -10,7 +10,9 @@ auto_rules.py -- 3차(서울) AI 자동 반영 루프: 회차가 끝날 때마�
        계정마다 회차 간 도착 흩어짐 등 시간 분포 특징을 다시 계산하고 (train_rules.py 와 같은 함수)
        정답이 있는 과거 회차(1~labels-upto)로 모델을 다시 맞춰 깊이 3 규칙으로 압축한다.
        → 그 규칙에 걸리는 계정 = 처음 보는 계정이어도 '시간 분포가 기계 같은' 계정.
-  3) 자동 검사 (사람 승인 대신): 정답이 사람인 계정이 하나라도 걸리면 배포하지 않고 이전 규칙을 유지.
+  3) 자동 검사 (사람 승인 대신): 정답이 사람인 계정의 연속 5회 창 중 하나라도 걸리면 배포하지 않고
+     이전 규칙을 유지. (긴 기록만 보고 검사하면 기록이 짧은 새 사람이 걸리는 걸 놓친다 — stress.py)
+     한 번 걸린 계정은 목록에 계속 남는다 (회차마다 들락날락하지 않게).
   4) 통과하면 bot-rules 로 바로 발행 → 전국 PoP 가 1초 안에 교체 → 다음 회차부터 차단.
   사람의 역할은 승인이 아니라 비상 정지: 빈 규칙 묶음을 발행하면 즉시 v0 으로 돌아간다.
 
@@ -66,11 +68,12 @@ def learn(rounds, labels_upto, cols):
     feats = T.account_features(reqs)
     judged = [k for k, f in feats.items() if f["n_rounds"] >= T.MIN_ROUNDS]
     train = [k for k in judged if k in known]
-    X = lambda ks: np.array([[feats[k][c] for c in cols] for k in ks], dtype=float)
-    y = np.array([int(known[k]) for k in train])
-    _, small = T.fit(X(train), y)
-    flagged = sorted(k for k, p in zip(judged, small.predict(X(judged))) if p == 1)
-    humans_hit = [k for k in flagged if known.get(k) is False]
+    Xw, yw, owner = T.window_matrix(feats, train, cols, known)   # 학습 = 모든 연속 5회 창
+    _, small = T.fit(Xw, yw)
+    latest = np.array([[feats[k][c] for c in cols] for k in judged], dtype=float)
+    flagged = sorted(k for k, p in zip(judged, small.predict(latest)) if p == 1)  # 판단 = 최근 5회
+    # 자동 검사: 정답이 사람인 계정의 '어느 5회 창이라도' 걸리면 배포하지 않는다
+    humans_hit = sorted({k for k, p in zip(owner, small.predict(Xw)) if p == 1 and known[k] is False})
     return flagged, humans_hit, T.tree_text(small, cols), set(feats) - set(judged)
 
 
@@ -97,6 +100,7 @@ def main():
         time.sleep(3)  # 마지막 detection-log 가 들어올 틈
         t0 = time.time()
         flagged, humans_hit, rule, pending = learn(rounds, a.labels_upto, cols)
+        flagged = sorted(set(flagged) | set(current or []))  # 한 번 매크로로 판정된 계정은 계속 차단
         took = time.time() - t0
         last = rounds[-1]["round"]
         rec = {"after_round": last, "at": datetime.now().isoformat(timespec="seconds"), "rule": rule,
@@ -112,7 +116,7 @@ def main():
             ruleset = bot_rules.validate({
                 "version": f"v{version}-ai-auto-r{last}", "approved_by": "auto-check",
                 "approved_at": rec["at"],
-                "rules": [{"id": "ai-timing", "why": " / ".join(rule) + f" ({T.MIN_ROUNDS}회 이상)",
+                "rules": [{"id": "ai-timing", "why": " / ".join(rule) + f" (최근 {T.MIN_ROUNDS}회 기준)",
                            "all": [{"f": "account_id", "op": "in", "v": flagged}]}]})
             producer.send("bot-rules", key=b"ruleset", value=json.dumps(ruleset, ensure_ascii=False).encode()).get(10)
             new = len(flagged) - len(current or [])

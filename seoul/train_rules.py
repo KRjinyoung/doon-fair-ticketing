@@ -13,8 +13,11 @@ train_rules.py -- 3차(서울) AI: 회차를 거듭한 '시간 분포'로 1·2�
     사람 : 기기 시계, 손, 망설임이 매번 다르다 → 수백 ms 흩어진다 (빨리 누르는 사람도)
 
 [흐름]
-  1) 회차 1~upto 의 v0 통과 좌석 요청을 계정별로 묶어 특징을 만든다 (회차 3번 이상 본 계정만 판단).
-  2) 큰 모델(그래디언트 부스팅, LightGBM 과 같은 방식) → 깊이 3 결정나무로 압축 (사람이 읽는 규칙).
+  1) 회차 1~upto 의 v0 통과 좌석 요청을 계정별로 묶고, '연속 5회차' 창마다 특징을 만든다.
+     학습은 모든 5회 창으로 한다 (사람이 짧은 기록에서도 걸리지 않는 선을 배우게).
+     판단은 계정의 최근 5회 창으로 한다. 5회 미만 본 계정은 판단하지 않는다.
+  2) 큰 모델(그래디언트 부스팅, LightGBM 과 같은 방식)과 깊이 3 결정나무(사람이 읽는 규칙)를 함께 배우고,
+     두 답이 얼마나 같은지(충실도)로 짧은 규칙이 큰 모델만큼 맞는지 확인한다.
      계정을 5묶음으로 나눠 '학습에 안 쓴 계정'에서 탐지율·오탐·충실도를 잰다 (교차 검증).
   3) 규칙에 걸린 계정 목록을 bot-rules 형식으로 쓴다 → 운영자 승인 → publish_rules.py 로 전국 PoP.
   4) upto 이후 회차에 그 목록을 돌려 '다음 회차부터 막혔나'를 보여준다.
@@ -40,11 +43,11 @@ sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)),
 import bot_rules  # noqa: E402
 from round_report import load_log  # noqa: E402
 
-KO = {"spread_ms": "회차 간 도착 흩어짐(ms)", "req_per_round": "회차당 요청 수",
+KO = {"spread_ms": "연속 5회 도착 흩어짐(ms)", "req_per_round": "회차당 요청 수",
       "referer_ratio": "Referer 비율", "account_age_days": "계정 나이(일)", "accounts_on_device": "같은 기기 계정 수"}
 SETS = {"행동만": ["spread_ms", "req_per_round", "referer_ratio"],
         "+계정": ["spread_ms", "req_per_round", "referer_ratio", "account_age_days", "accounts_on_device"]}
-MIN_ROUNDS = 3
+MIN_ROUNDS = 5  # 3회면 사람·봇 꼬리가 겹친다(stress: 사람 창 1만 개 중 29개). 5회면 0개, 여유 4.7ms
 
 
 def requests_by_round(rounds, log, window):
@@ -60,7 +63,16 @@ def requests_by_round(rounds, log, window):
     return out
 
 
+def _window(rows, extra):
+    """연속 회차 몇 개(rows = [(회차 첫 도착 ms, [요청들])])의 특징."""
+    allr = [r for _, rs in rows for r in rs]
+    return {"spread_ms": float(np.std([f for f, _ in rows])),
+            "req_per_round": len(allr) / len(rows),
+            "referer_ratio": float(np.mean(["referer" in r["headers"]["values"] for r in allr])), **extra}
+
+
 def account_features(reqs):
+    """계정 -> 최근 5회 창의 특징 + windows(모든 연속 5회 창). 5회 미만이면 windows 가 비어 있다."""
     per = defaultdict(lambda: defaultdict(list))
     dev = defaultdict(set)
     for rnd, ms, who, r in reqs:
@@ -68,24 +80,29 @@ def account_features(reqs):
         dev[r.get("device_fp")].add(r["account_id"])
     feats = {}
     for acct, rounds in per.items():
-        first = [min(x[0] for x in v) for v in rounds.values()]  # 회차마다 첫 요청
-        allr = [x[1] for v in rounds.values() for x in v]
-        feats[acct] = {
-            "n_rounds": len(rounds),
-            "spread_ms": float(np.std(first)),
-            "req_per_round": len(allr) / len(rounds),
-            "referer_ratio": float(np.mean(["referer" in r["headers"]["values"] for r in allr])),
-            "account_age_days": allr[0].get("account_age_days"),
-            "accounts_on_device": len(dev[allr[0].get("device_fp")]),
-            "first_ms": first,
-        }
+        rows = [(min(x[0] for x in rounds[k]), [x[1] for x in rounds[k]]) for k in sorted(rounds)]
+        r0 = rows[0][1][0]
+        extra = {"account_age_days": r0.get("account_age_days"), "accounts_on_device": len(dev[r0.get("device_fp")])}
+        wins = [_window(rows[i:i + MIN_ROUNDS], extra) for i in range(len(rows) - MIN_ROUNDS + 1)]
+        feats[acct] = {"n_rounds": len(rows), **(wins[-1] if wins else _window(rows, extra)),
+                       "windows": wins, "first_ms": [f for f, _ in rows]}
     return feats
+
+
+def window_matrix(feats, accts, cols, label):
+    """계정들의 모든 5회 창 -> (X, y, 창마다 계정)."""
+    rows = [(k, w) for k in accts for w in feats[k]["windows"]]
+    return (np.array([[w[c] for c in cols] for _, w in rows], dtype=float),
+            np.array([int(label[k]) for k, _ in rows]), [k for k, _ in rows])
 
 
 def fit(X, y):
     # 계정이 수십 개라 잎 최소 크기 기본값(20)이면 거의 나누지 못한다
     big = HistGradientBoostingClassifier(max_iter=200, min_samples_leaf=3, random_state=0).fit(X, y)
-    small = DecisionTreeClassifier(max_depth=3, min_samples_leaf=3, random_state=0).fit(X, big.predict(X))
+    # 짧은 규칙은 정답으로 직접 배운다. 큰 모델의 답을 흉내 내게 하면 큰 모델이 값을 굵게 묶은 구간
+    # (실험판에서 7~29ms 를 한 칸으로)을 그대로 물려받아 선이 사람 쪽으로 밀렸다.
+    # 큰 모델은 '짧은 규칙이 큰 모델과 같은 답을 내나(충실도)'를 재는 기준으로 쓴다.
+    small = DecisionTreeClassifier(max_depth=3, min_samples_leaf=3, random_state=0).fit(X, y)
     return big, small
 
 
@@ -125,34 +142,40 @@ def main():
     print(f"학습 회차 1~{upto}: 계정 {len(feats)}개 중 {MIN_ROUNDS}회 이상 본 {len(judged)}개를 판단 "
           f"(봇 {sum(label[k] != 'human' for k in judged)} / 사람 {sum(label[k] == 'human' for k in judged)})")
 
-    print("\n회차 간 도착 흩어짐 (계정별 표준편차, ms) — 시간 분포가 보여주는 차이")
+    print(f"\n연속 {MIN_ROUNDS}회차 도착 흩어짐 (5회 창마다 표준편차, ms) — 시간 분포가 보여주는 차이")
     for who in sorted({label[k] for k in judged}):
-        v = sorted(feats[k]["spread_ms"] for k in judged if label[k] == who)
-        print(f"  {who:16} 최소 {v[0]:7.1f}  중앙 {v[len(v) // 2]:7.1f}  최대 {v[-1]:7.1f}  (계정 {len(v)})")
+        v = sorted(w["spread_ms"] for k in judged if label[k] == who for w in feats[k]["windows"])
+        print(f"  {who:16} 최소 {v[0]:7.1f}  중앙 {v[len(v) // 2]:7.1f}  최대 {v[-1]:7.1f}  (창 {len(v)})")
 
-    y = np.array([int(label[k] != "human") for k in judged])
+    isbot = {k: label[k] != "human" for k in judged}
+    y = np.array([int(isbot[k]) for k in judged])
     chosen = None
     for name, cols in SETS.items():
-        X = np.array([[feats[k][c] for c in cols] for k in judged], dtype=float)
-        # 교차 검증: 학습에 안 쓴 계정에서 잰다
-        pred_small, pred_big = np.zeros_like(y), np.zeros_like(y)
+        X = np.array([[feats[k][c] for c in cols] for k in judged], dtype=float)  # 최근 5회 창
+        # 교차 검증: 학습에 안 쓴 계정에서 잰다. 사람은 '어느 5회 창이라도' 걸리면 오탐으로 센다.
+        pred_small, pred_big, hum_any = np.zeros_like(y), np.zeros_like(y), np.zeros_like(y)
         for tr, te in StratifiedKFold(5, shuffle=True, random_state=0).split(X, y):
-            big, small = fit(X[tr], y[tr])
+            Xw, yw, _ = window_matrix(feats, [judged[i] for i in tr], cols, isbot)
+            big, small = fit(Xw, yw)
             pred_small[te], pred_big[te] = small.predict(X[te]), big.predict(X[te])
-        big, small = fit(X, y)
+            for i in te:
+                Xi, _, _ = window_matrix(feats, [judged[i]], cols, isbot)
+                hum_any[i] = int(small.predict(Xi).any())
+        Xw, yw, _ = window_matrix(feats, judged, cols, isbot)
+        big, small = fit(Xw, yw)
         flagged = [k for k, p in zip(judged, small.predict(X)) if p == 1]
         hum = y == 0
         print(f"\n=== 특징: {name} ({', '.join(KO[c] for c in cols)}) ===")
         print(f"  [교차 검증, 처음 보는 계정] 봇 계정 탐지 {pred_small[~hum].mean():.0%}  "
-              f"사람 오탐 {pred_small[hum].mean():.0%} ({pred_small[hum].sum()}/{hum.sum()})  "
+              f"사람 오탐(어느 5회 창이라도) {hum_any[hum].mean():.0%} ({hum_any[hum].sum()}/{hum.sum()})  "
               f"큰 모델과 충실도 {np.mean(pred_small == pred_big):.0%}")
         print("  AI 가 만든 규칙 (이 중 하나라도 맞으면 봇 계정):")
         for line in tree_text(small, cols):
-            print(f"    - {line}  (그리고 {MIN_ROUNDS}회 이상 관찰)")
+            print(f"    - {line}  (최근 {MIN_ROUNDS}회 기준)")
         print(f"  지금 걸리는 계정 {len(flagged)}개: " + ", ".join(f"{w} {n}" for w, n in Counter(label[k] for k in flagged).items()))
 
         ruleset = {"version": f"v1-ai-{name}-r{upto}", "approved_by": None,
-                   "rules": [{"id": "ai-timing", "why": " / ".join(tree_text(small, cols)) + f" ({MIN_ROUNDS}회 이상)",
+                   "rules": [{"id": "ai-timing", "why": " / ".join(tree_text(small, cols)) + f" (최근 {MIN_ROUNDS}회 기준)",
                               "all": [{"f": "account_id", "op": "in", "v": sorted(flagged)}]}] if flagged else []}
         bot_rules.validate(ruleset)
 

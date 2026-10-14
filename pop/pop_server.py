@@ -103,6 +103,7 @@ KAFKA_BROKER = os.environ.get("KAFKA_BROKER", "kafka:9092")
 KAFKA_TOPIC_SEAT_REQUESTS = "seat-requests"
 KAFKA_TOPIC_SEAT_STATUS = "seat-status"
 KAFKA_TOPIC_DETECTION_LOG = "detection-log"
+KAFKA_TOPIC_BOT_RULES = "bot-rules"  # 서울이 승인된 규칙 묶음을 보낸다 [BOTRULES_V1]
 
 kafka_producer: AIOKafkaProducer | None = None
 # detection-log 전용. 판정용 전송기와 묶음을 섞지 않으려고 따로 둔다.  [DETLOG_V2]
@@ -231,6 +232,41 @@ async def kafka_consume_status_loop():
             await asyncio.sleep(5)
 
 
+async def kafka_consume_rules_loop():
+    """
+    서울이 발행한 규칙 묶음을 받아 통째로 교체한다.  [BOTRULES_V1]
+    group 없이(group_id=None) earliest 로 읽어서, 워커마다·재시작마다 늘 토픽을
+    처음부터 읽고 마지막(=최신) 묶음이 남는다. group 을 쓰면 도커 안 pid 가 재시작
+    후에도 같아 커밋된 위치부터 이어 읽고, 그 전 규칙을 놓친다(격리 시험에서 확인).
+    형식이 틀린 묶음은 버린다.
+    """
+    global active_rules
+    while True:
+        consumer = AIOKafkaConsumer(
+            KAFKA_TOPIC_BOT_RULES,
+            bootstrap_servers=KAFKA_BROKER,
+            group_id=None,
+            auto_offset_reset="earliest",
+        )
+        try:
+            await consumer.start()
+            async for msg in consumer:
+                try:
+                    active_rules = _br.validate(json.loads(msg.value))
+                    _fl.RULESET_VERSION = active_rules["version"]
+                    print(f"[{POP_ID}] 봇 규칙 적용: {active_rules['version']} "
+                          f"({len(active_rules['rules'])}개)")
+                except Exception as e:
+                    print(f"[{POP_ID}] 봇 규칙 묶음 무시 (offset {msg.offset}): {e}")
+        except asyncio.CancelledError:
+            await consumer.stop()
+            raise
+        except Exception as e:
+            print(f"[{POP_ID}] bot-rules consumer 오류, 5초 후 재시도: {e}")
+            await consumer.stop()
+            await asyncio.sleep(5)
+
+
 async def safe_publish_detection_log(payload: dict):
     """
     detection-log는 예약 흐름의 핵심 경로가 아니므로(봇 탐지용 부가 로그),
@@ -294,6 +330,7 @@ async def lifespan(app: FastAPI):
         print(f"[{POP_ID}] detection-log producer 시작 실패: {e}")
 
     status_consumer_task = asyncio.create_task(kafka_consume_status_loop())
+    rules_consumer_task = asyncio.create_task(kafka_consume_rules_loop())  # [BOTRULES_V1]
     # 전달 지연 상시 측정용 발신  [HEARTBEAT_V1]
     heartbeat_task = asyncio.create_task(heartbeat_send_loop())
 
@@ -301,6 +338,7 @@ async def lifespan(app: FastAPI):
 
     clock_task.cancel()
     status_consumer_task.cancel()
+    rules_consumer_task.cancel()
     await kafka_producer.stop()
     await detlog_producer.stop()
     if http_client is not None:
@@ -670,7 +708,10 @@ app.mount("/", StaticFiles(directory="static", html=True), name="static")
 # 시연에서 차단을 보여줄 때만 BOT_FILTER_MODE=enforce 로 올린다.
 # ===========================================================================
 import first_layer as _fl
+import bot_rules as _br
 from fastapi.responses import JSONResponse as _BFJSONResponse
+
+active_rules = _br.EMPTY  # kafka_consume_rules_loop 가 교체한다 [BOTRULES_V1]
 
 
 @app.middleware("http")
@@ -681,6 +722,16 @@ async def _bot_filter_middleware(request, call_next):
     ip = _fl.client_ip_of(request)
     headers = {k.lower(): v for k, v in request.headers.items()}
     verdict = _fl.first_layer_filter(ip, headers, pop_id=POP_ID)
+
+    # 서울 규칙은 좌석 요청에만 돌린다. 학습 재료(detection-log)가 좌석 요청이라
+    # 다른 경로에 돌리면 검증한 적 없는 곳에서 차단하게 된다.  [BOTRULES_V1]
+    if verdict.passed and active_rules["rules"] and request.url.path == "/seat-request":
+        identity = getattr(request.state, "identity", None) or _pa.ANONYMOUS
+        rule_id = _br.match(active_rules, {
+            "client_ip": ip, "headers": _fl.header_snapshot(request), **identity.as_payload()})
+        if rule_id:
+            verdict = _fl.FilterResult(passed=False, reason=f"rule:{rule_id}")
+            _fl.bot_flagged.labels(pop_id=POP_ID, reason=verdict.reason).inc()
 
     if (not verdict.passed) and _fl.MODE == "enforce":
         _fl.bot_blocked.labels(pop_id=POP_ID, reason=verdict.reason).inc()
@@ -741,8 +792,8 @@ async def _log_first_layer_block(request, ip: str):
 
 @app.get("/bot-filter")
 async def _bot_filter_status():
-    """1차 필터 상태 점검용: 현재 모드, 추적 중인 IP 수, 차단 목록 샘플."""
-    return _fl.stats()
+    """1차 필터 상태 점검용: 현재 모드, 추적 중인 IP 수, 차단 목록 샘플, 서울 규칙."""
+    return {**_fl.stats(), "ruleset_version": _fl.RULESET_VERSION, "rules": active_rules["rules"]}
 
 
 # ---------------------------------------------------------------------------

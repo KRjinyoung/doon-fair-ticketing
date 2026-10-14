@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY pop_server.py .
 COPY first_layer.py .
 COPY pop_auth.py .
+COPY bot_rules.py .
 COPY frontend/ ./static/
  
 EXPOSE 8000

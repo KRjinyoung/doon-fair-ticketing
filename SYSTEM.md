@@ -94,7 +94,7 @@ PoP 안에서의 처리 순서 (미들웨어는 바깥쪽부터):
      실패하면 그대로 return — "DB에 없는 확정 이벤트"가 나가지 않게 하는 불변식.
 
 ### 3-4. 결과 전파와 결제
-- 각 PoP는 `seat-status`를 **워커 프로세스마다 고유 group_id**(`pop-status-cache-{POP_ID}-{pid}`, `earliest`)로 구독해
+- 각 PoP는 `seat-status`를 **group 없이**(`group_id=None`, `earliest`) 워커마다 처음부터 구독해
   `seat_status_cache`를 채운다. 그래서 `/seat-status/{id}`와 `/seats-overview`는 central 왕복 없이 로컬 캐시로 답한다.
 - 브라우저는 예약 직후 0.5초 간격으로 `/seat-status/{seat_id}`를 폴링:
   `pending`이면 경쟁자 수 표시, `confirmed`면 `winner_request_id == 내 request_id` 비교로 승패 판정.

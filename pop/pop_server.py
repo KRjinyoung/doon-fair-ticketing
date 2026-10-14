@@ -18,9 +18,8 @@
         모든 PoP(지금은 pop-pangyo, pop-daejeon)가 이걸 구독해서 seat_status_cache를
         채운다. /seat-status, /seats-overview는 이제 central에 HTTP로 안 물어보고
         이 로컬 캐시에서 바로 응답한다 — 왕복 지연 없이 즉시 응답 가능.
-        *** 반드시 PoP마다 고유한 group_id를 써야 한다 *** (pop-status-cache-{POP_ID}).
-        같은 group_id를 여러 PoP가 공유하면 파티션이 나뉘어 일부 PoP만 메시지를
-        받게 되어, 그 PoP의 캐시가 불완전해진다.
+        *** group 없이(group_id=None) 구독한다 *** group 을 공유하면 파티션이 나뉘어
+        일부만 받고, 고유 group 이어도 재시작 후 커밋 위치부터 이어 읽어 캐시가 빈다.
       - detection-log: 매크로/봇 탐지용 원본 이벤트(요청 IP 포함)를 발행하는 토픽.
         서울 AI Cloud가 이걸 구독해서 continuous learning에 사용할 예정 (그쪽 소비자는
         이 저장소 밖에서 별도로 구성됨 — 여기서는 발행만 정확히 하면 된다).
@@ -195,27 +194,26 @@ async def periodic_clock_sync():
 async def kafka_consume_status_loop():
     """
     *** (중요) central이 발행한 seat-status 이벤트를 구독해서 로컬 캐시를 채우는 루프 ***
-    group_id를 PoP마다 고유하게(pop-status-cache-{POP_ID}) 줘야, 모든 PoP가 각자
-    전체 메시지를 다 받는다. group_id를 여러 PoP가 공유하면 Kafka가 파티션을
-    나눠 분배해버려서, 한 PoP는 일부 좌석 이벤트를 아예 못 받는 사고가 난다.
-    auto_offset_reset="earliest"라서, PoP가 재시작되어도 지금까지의 전체 좌석
-    상태를 토픽에서 다시 읽어와 캐시를 복원한다.
+    group 없이(group_id=None) earliest 로 읽는다. 그래서 워커마다 전체 파티션을 다
+    받고, 재시작할 때마다 토픽을 처음부터 다시 읽어 캐시를 복원한다.
+
+    *** 예전 방식(pop-status-cache-{POP_ID}-{pid})이 틀렸던 이유 ***  [STATUS_NOGROUP_V1]
+    도커 안의 워커 pid 는 재시작해도 같은 번호(10, 11, ...)라 같은 group 이 되고,
+    Kafka 는 그 group 이 커밋해둔 위치부터 이어서 준다. 새 프로세스의 빈 캐시에는
+    그 전 확정 좌석이 안 들어와, 재시작한 PoP 의 좌석 지도에서 팔린 좌석이 빈
+    좌석으로 보였다(격리 시험으로 재현 2026-10-14).
     """
-    # 워커(프로세스)마다 다른 group_id 를 써야 각자 전체 좌석 상태를 다 받는다.
-    # 같은 group_id 면 Kafka 가 파티션을 나눠줘서 워커별로 화면이 달라진다.
-    #  [WORKERS_V1]
-    group_id = f"pop-status-cache-{POP_ID}-{os.getpid()}"
     while True:
         consumer = AIOKafkaConsumer(
             KAFKA_TOPIC_SEAT_STATUS,
             bootstrap_servers=KAFKA_BROKER,
-            group_id=group_id,
+            group_id=None,
             value_deserializer=lambda v: json.loads(v.decode("utf-8")),
             auto_offset_reset="earliest",
         )
         try:
             await consumer.start()
-            print(f"[{POP_ID}] seat-status consumer 시작됨 (group={group_id})")
+            print(f"[{POP_ID}] seat-status consumer 시작됨 (group 없음, 처음부터)")
             async for msg in consumer:
                 data = msg.value
                 if not (data.get("status") == "pending" and seat_status_cache.get(data["seat_id"], {}).get("status") == "confirmed"): seat_status_cache[data["seat_id"]] = data

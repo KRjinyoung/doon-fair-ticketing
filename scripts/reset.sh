@@ -5,10 +5,12 @@
 #   1) 중앙 Postgres  confirmed_seats
 #   2) 중앙 메모리    seat_windows        -> central 재시작
 #   3) PoP 메모리     seat-status 캐시    -> PoP 재시작
-#   4) Kafka          seat-status 잔류    -> 컨슈머 오프셋 최신으로
+#   4) Kafka          seat-status 잔류    -> 확정됐던 좌석마다 available 덮어쓰기
 #   5) Redis          수집창/확정 키      -> redis-cli flushall   [REDIS_STEP1B]
 #
 # 4번을 빼면 PoP 가 재시작하며 옛 메시지를 다시 읽어 좌석이 되살아난다.
+# PoP 는 seat-status 를 group 없이 늘 처음부터 읽으므로 오프셋을 옮겨도 소용없다.
+# 대신 더 뒤 오프셋에 available 을 써서 '마지막 상태'를 바꾼다.  [STATUS_NOGROUP_V1]
 set -u
 cd "$(dirname "$0")/.." || exit 1   # 저장소 루트 기준으로 실행 (compose 파일, doonload.py 경로)
 CF=docker-compose.pangyo.yml
@@ -25,7 +27,7 @@ echo
 echo "[1/5] Kafka 스크립트 경로"
 KB=""
 for c in /opt/kafka/bin /opt/bitnami/kafka/bin /usr/bin; do
-  if $DC exec -T kafka sh -c "test -x $c/kafka-consumer-groups.sh" 2>/dev/null; then KB=$c; break; fi
+  if $DC exec -T kafka sh -c "test -x $c/kafka-console-producer.sh" 2>/dev/null; then KB=$c; break; fi
 done
 if [ -n "$KB" ]; then echo "  $KB"; else echo "  못 찾음 - 4번 건너뜀"; fi
 
@@ -36,6 +38,8 @@ echo "  pop-pangyo 정지"
 
 echo
 echo "[3/5] 중앙 DB 좌석 비우기"
+SEATS=$($DC exec -T postgres psql -U ticketing -d ticketing -tAc \
+        "SELECT seat_id FROM confirmed_seats;" | tr -d '\r' | grep -v '^$')
 $DC exec -T postgres psql -U ticketing -d ticketing -c "TRUNCATE confirmed_seats;" >/dev/null 2>&1
 printf "  남은 행 : "
 $DC exec -T postgres psql -U ticketing -d ticketing -tAc "SELECT count(*) FROM confirmed_seats;"
@@ -43,19 +47,16 @@ $DC exec -T postgres psql -U ticketing -d ticketing -tAc "SELECT count(*) FROM c
 if $DC exec -T redis redis-cli flushall >/dev/null 2>&1; then echo "  Redis 비움"; else echo "  Redis 없음/실패 - 건너뜀"; fi
 
 echo
-echo "[4/5] Kafka 컨슈머 오프셋을 최신으로"
-if [ -n "$KB" ]; then
-  $DC exec -T kafka "$KB/kafka-consumer-groups.sh" --bootstrap-server localhost:9092 --list 2>/dev/null \
-  | tr -d '\r' | while read -r g; do
-      [ -z "$g" ] && continue
-      out=$($DC exec -T kafka "$KB/kafka-consumer-groups.sh" --bootstrap-server localhost:9092 \
-            --group "$g" --all-topics --reset-offsets --to-latest --execute 2>&1)
-      if echo "$out" | grep -qiE "error|not empty"; then
-        echo "  $g  건너뜀 (사용 중)"
-      else
-        echo "  $g  이동"
-      fi
-    done
+echo "[4/5] seat-status 에 available 덮어쓰기"
+if [ -n "$KB" ] && [ -n "$SEATS" ]; then
+  printf '%s\n' "$SEATS" | while read -r s; do
+    [ -n "$s" ] && printf '%s|{"seat_id":"%s","status":"available"}\n' "$s" "$s"
+  done | $DC exec -T kafka "$KB/kafka-console-producer.sh" \
+        --bootstrap-server localhost:9092 --topic seat-status \
+        --property parse.key=true --property key.separator='|' 2>/dev/null
+  echo "  $(printf '%s\n' "$SEATS" | grep -c .)건"
+else
+  echo "  덮어쓸 좌석 없음"
 fi
 
 echo

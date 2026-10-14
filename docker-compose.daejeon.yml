@@ -31,9 +31,6 @@ services:
       - UVICORN_WORKERS=4
       - PROMETHEUS_MULTIPROC_DIR=/tmp/prom_multiproc
       # *** 이 값이 판정 로그와 대시보드에서 대전을 구분하는 유일한 키다 ***
-      # pop_server.py가 seat-status 구독 group_id를 pop-status-cache-{POP_ID}로
-      # 만들기 때문에, 이 값이 판교와 겹치면 두 PoP가 같은 컨슈머 그룹으로 묶여
-      # 좌석 이벤트가 둘로 나뉘어 배달된다(각자 절반만 받는 사고).
       - POP_ID=pop-daejeon
       # 1차 봇 필터 동작 모드: off | monitor | enforce
       #   monitor = 판정만 하고 통과시킴. 부하 테스트(curl)가 그대로 돌아간다.

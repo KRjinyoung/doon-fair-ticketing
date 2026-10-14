@@ -2,12 +2,10 @@
 # 좌석 초기화 (대전 PoP 를 멈추지 않고)  — 시연 재촬영용
 #
 # reset.sh 와 다른 점
-#   reset.sh 는 대전 PoP 정지를 요구하고, Kafka 컨슈머 오프셋을 최신으로 옮긴다.
-#   그런데 PoP 의 seat-status 컨슈머는 group_id 가 pop-status-cache-{POP_ID}-{pid} 라
-#   재시작할 때마다 '새 그룹'이 되고 auto_offset_reset=earliest 로 토픽을 처음부터
-#   다시 읽는다. 옛 그룹 오프셋을 옮겨봐야 아무 효과가 없다.
+#   reset.sh 는 대전 PoP 정지를 요구하고 PoP 를 재시작한다. 여기서는 아무것도 멈추지 않는다.
+#   PoP 의 seat-status 컨슈머는 group 없이 늘 토픽을 처음부터 읽는다.  [STATUS_NOGROUP_V1]
 #
-#   그래서 여기서는 확정된 좌석마다 status=available 메시지를 '더 뒤 오프셋에'
+#   그래서 두 스크립트 모두 확정된 좌석마다 status=available 메시지를 '더 뒤 오프셋에'
 #   덮어쓴다. 살아있는 PoP 는 실시간으로 캐시가 갱신되고, 나중에 재시작해
 #   토픽을 처음부터 다시 읽어도 이 메시지가 마지막이라 최종 상태가 유지된다.
 #   덕분에 대전 PoP 를 건드릴 필요가 없다.

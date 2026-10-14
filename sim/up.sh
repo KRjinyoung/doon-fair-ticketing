@@ -18,4 +18,4 @@ docker compose -f sim/docker-compose.yml up -d --build
 echo "central 준비 대기..."
 for i in $(seq 1 60); do curl -sf -m 2 localhost:18001/auth/stats >/dev/null && break; sleep 2; done
 COMPOSE=sim/docker-compose.yml CENTRAL=localhost:18001 NORMAL_N=${NORMAL_N:-60} bash scripts/seed_accounts.sh
-echo "판교 PoP http://localhost:18198   대전 PoP http://localhost:18199"
+echo "판교 PoP http://172.17.0.1:18198   대전 PoP http://172.17.0.1:18199"

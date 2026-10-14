@@ -9,7 +9,8 @@ round_report.py -- 수집 회차별로 "누가 1차 필터에 걸렸나"를 표�
   rounds 의 bots[].account_id  -> 그 봇 종류 (simple / disguised / browser-stealth)
   그 밖의 로그인 계정          -> human
   계정 없음                    -> anonymous
-각 회차는 오픈 시각부터 --window 초 안의 detection-log 만 센다 (seat.html 은 30초 열린다).
+각 회차는 오픈 2초 전부터 --window 초까지의 detection-log 를 센다 (seat.html 은 30초 열린다.
+기기 시계가 빠른 사람은 실제 오픈보다 조금 일찍 도착할 수 있어 앞쪽도 본다).
 
 판정 열
   통과      : 1차 필터를 지나 좌석 요청까지 간 것
@@ -59,8 +60,8 @@ def main():
 
     for rd in rounds:
         bot_of = {b["account_id"]: b.get("bot", "?") for b in rd["bots"] if b.get("account_id")}
-        t0 = rd["open_at_ms"] * 1000
-        t1 = t0 + a.window * 1e6
+        t0 = rd["open_at_ms"] * 1000 - 2e6
+        t1 = t0 + 2e6 + a.window * 1e6
         tab = defaultdict(Counter)
         for r in log:
             if not t0 <= (r.get("pop_arrival_epoch_us") or 0) < t1:

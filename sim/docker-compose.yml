@@ -7,7 +7,10 @@
 # 라이브와 겹치지 않게 하는 장치
 #   - name: doonsim  → 컨테이너·네트워크·볼륨 이름이 전부 doonsim-* 로 따로 생긴다
 #   - container_name 을 쓰지 않는다 (라이브는 postgres, kafka ... 이름을 쓴다)
-#   - 호스트 포트는 127.0.0.1 에만 연다 (판교 PoP 18198, 대전 PoP 18199, central 18001)
+#   - 호스트 포트는 바깥에 열지 않는다: PoP 는 도커 브리지 172.17.0.1:18198(판교)/18199(대전),
+#     central 은 127.0.0.1:18001. PoP 를 localhost 로 두지 않는 이유: 크롬은 localhost 를
+#     "보안 출처"로 쳐서 sec-fetch-*, sec-ch-ua 를 붙이는데, 라이브(HTTP 공인 IP)에서는 안 붙는다.
+#     그대로 두면 AI 가 "이 헤더가 있으면 봇" 이라는 가짜 차이를 배운다.
 #   - Kafka 는 바깥에 열지 않는다. 서울로도 가지 않는다 (로그는 sim/dump_log.sh 로 꺼낸다)
 #
 # PoP 를 둘(판교, 대전 이름) 띄우는 이유: 지역별 오탐이 고른지 같은 조건으로 비교하려고.
@@ -95,7 +98,7 @@ services:
   # nginx 설정은 up.sh 가 라이브 설정(git HEAD)에서 만들어 .gen/ 에 둔다.
   nginx-pangyo:
     image: nginx:alpine
-    ports: ["127.0.0.1:18198:80"]
+    ports: ["172.17.0.1:18198:80"]
     volumes:
       - ./.gen/nginx-pangyo.conf:/etc/nginx/conf.d/default.conf:ro
       - ../pop/frontend:/usr/share/nginx/html:ro
@@ -103,7 +106,7 @@ services:
 
   nginx-daejeon:
     image: nginx:alpine
-    ports: ["127.0.0.1:18199:80"]
+    ports: ["172.17.0.1:18199:80"]
     volumes:
       - ./.gen/nginx-daejeon.conf:/etc/nginx/conf.d/default.conf:ro
       - ../pop/frontend:/usr/share/nginx/html:ro

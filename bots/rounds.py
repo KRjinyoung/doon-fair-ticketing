@@ -40,6 +40,8 @@ def main():
     ap.add_argument("--first", type=int, default=1, help="회차 번호 시작 (같은 --out 에 이어 붙일 때)")
     ap.add_argument("--base", default="http://localhost:13198", help="봇이 겨눌 PoP (쉼표로 여러 개)")
     ap.add_argument("--copies", type=int, default=1, help="봇 종류마다 몇 개씩")
+    ap.add_argument("--bot-from", type=int, default=1, help="봇 계정 번호 시작 (botNN)")
+    ap.add_argument("--bot-count", type=int, default=30, help="돌려 쓸 봇 계정 수")
     ap.add_argument("--humans", type=int, default=0, help="시뮬레이터 사람 수 (격리 실험판 전용)")
     ap.add_argument("--out", default=os.path.join(HERE, "rounds.jsonl"))
     ap.add_argument("--yes", action="store_true")
@@ -62,7 +64,7 @@ def main():
         n = 3 * a.copies
         procs = []
         for k in range(n):
-            email, base = f"bot{(n * (r - 1) + k) % 30 + 1:02d}@doon.kr", bases[k % len(bases)]
+            email, base = f"bot{(n * (r - 1) + k) % a.bot_count + a.bot_from:02d}@doon.kr", bases[k % len(bases)]
             script = [sys.executable, os.path.join(HERE, "script_bot.py"), "--base", base, "--at", at, "--email", email]
             procs.append(subprocess.Popen(
                 [script, script + ["--disguise"],

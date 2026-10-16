@@ -3,7 +3,7 @@ import base64
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-W, H = 1720, 930
+W, H = 1720, 870
 NAVY, ORANGE, GREEN, GREY, INK, SUB = "#1F3A93", "#D35400", "#1E8449", "#8A94A6", "#1B2230", "#4A5568"
 FONT = "'Noto Sans CJK KR', sans-serif"
 
@@ -91,7 +91,7 @@ pill(925, 620, 160, ORANGE, "bot-rules")
 arrow([(BX, 207), (920, 207)], NAVY, "② 시각 + 보정값", 826, 198)
 arrow([(925, 287), (BX + 4, 287)], NAVY, "④ 당첨 / 낙첨", 826, 278)
 arrow([(BX, 557), (920, 557)], ORANGE, "⑤ 탐지 로그", 826, 548)
-arrow([(925, 637), (BX + 4, 637)], ORANGE, "⑥ AI 규칙", 826, 628, dash=True)
+arrow([(925, 637), (BX + 4, 637)], ORANGE, "⑥ AI 규칙", 826, 628)
 
 comp(1125, 190, ["fastapi"], "central (FastAPI)",
      ["보정 시각으로 승자 판정", "시계 오차 범위 안 동점 →", "검증 가능한 추첨 (sha1)"], size=40)
@@ -108,18 +108,9 @@ comp(1410, 545, ["python"], "collector", ["탐지 로그 수집 · 보관"], siz
 comp(1410, 640, ["python"], "AI 규칙 학습", ["회차별 도착 시각 분포 학습", "→ 짧은 규칙으로 압축", "→ 자동 검사 후 배포"], size=36)
 arrow([(1440, 590), (1440, 632)], ORANGE, None, width=1.8)
 arrow([(1085, 557), (1402, 557)], ORANGE, "⑤", 1245, 548)
-arrow([(1402, 660), (1250, 660), (1250, 637), (1090, 637)], ORANGE, "⑥", 1320, 652, dash=True)
-out.append(f'<text x="1545" y="780" font-size="12" fill="{ORANGE}" text-anchor="middle">점선 = 격리 실험판에서 검증</text>')
+arrow([(1402, 660), (1250, 660), (1250, 637), (1090, 637)], ORANGE, "⑥", 1320, 652)
 
 # ---------- 하단
-out.append(f'<text x="40" y="880" font-size="15" fill="{INK}"><tspan font-weight="700">같은 순간 클릭 대결 (실서비스, 99회)</tspan>'
-           f'  기존 서버 도착순 → 대전 승 <tspan font-weight="700">0/99</tspan>   ·   DOON → 대전 승 <tspan font-weight="700">54/99</tspan></text>')
-legend = [(NAVY, False, "예매 판정 흐름"), (ORANGE, False, "매크로 탐지 · AI"), (GREEN, True, "시간 동기화"), (INK, False, "PoP ↔ 중앙 연결")]
-x = 40
-for c, dsh, t in legend:
-    out.append(f'<line x1="{x}" y1="906" x2="{x + 34}" y2="906" stroke="{c}" stroke-width="3" {DA64 if dsh else ""}/>')
-    out.append(f'<text x="{x + 42}" y="911" font-size="13.5" fill="{INK}">{t}</text>')
-    x += 190
 
 markers = "".join(
     f'<marker id="a{c.strip("#")}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">'

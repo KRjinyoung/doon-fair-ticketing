@@ -13,4 +13,4 @@ docker run --rm --user $(id -u):$(id -g) -e HOME=/tmp -e NODE_PATH=/home/pptruse
   -v /usr/share/fonts/opentype/noto:/usr/share/fonts/noto:ro ghcr.io/puppeteer/puppeteer:latest node /work/shot.js
 ```
 
-점선(⑥ AI 규칙 학습·배포)은 격리 실험판에서 검증한 흐름이다. 연결선에는 KOREN 망 여부를 적지 않았다(미확인).
+연결선에는 KOREN 망 여부를 적지 않았다(미확인).

@@ -7,6 +7,8 @@ RUN pip install --no-cache-dir -r requirements.txt
  
 COPY central_server.py .
 COPY redis_window.py .
+# 2차 판정 모듈  [MACRO3_V1]
+COPY second_layer.py bot_rules.py ./
 COPY frontend/ ./static/
  
 EXPOSE 8080

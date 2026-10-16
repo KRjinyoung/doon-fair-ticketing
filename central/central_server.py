@@ -59,6 +59,8 @@ from pydantic import BaseModel
 from prometheus_client import Counter, Gauge, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 
+import second_layer as _l2  # 2차 판정 (전국 집계)  [MACRO3_V1]
+
 # 테스트하기 편하게 창을 넉넉히 5초로 잡는다.
 # 실제 시스템에서는 P99 지연 기반으로 80~250ms 수준까지 줄여야 한다.
 WINDOW_SECONDS = 5.0
@@ -425,6 +427,10 @@ async def lifespan(app: FastAPI):
             print(f"[central] Kafka producer 연결 실패 (재시도 {attempt + 1}/10): {e}")
             await asyncio.sleep(3)
 
+    # 2차 판정: Redis 연결 + 세션 적재, 서울 규칙 묶음 구독  [MACRO3_V1]
+    await _l2.start(os.environ.get("REDIS_URL", ""), auth_pool, kafka_producer)
+    l2_rules_task = asyncio.create_task(_l2.rules_loop(KAFKA_BROKER))
+
     # 판정 컨슈머를 파티션 수만큼 병렬로 띄운다.  [PARCONSUME_V1]
     consumer_tasks = [
         asyncio.create_task(kafka_consume_loop(i))
@@ -439,6 +445,7 @@ async def lifespan(app: FastAPI):
     yield
     for t in consumer_tasks:
         t.cancel()
+    l2_rules_task.cancel()
     pool_task.cancel()
     await kafka_producer.stop()
     await db_pool.close()
@@ -842,9 +849,13 @@ async def kafka_consume_loop(consumer_idx: int = 0):
                     timeout_ms=200, max_records=KAFKA_JUDGE_BATCH
                 )
                 for _tp, msgs in batches.items():
-                    for msg in msgs:
+                    # 2차 판정: 걸린 요청은 판정 후보에서만 뺀다 (순서·추첨은 그대로)  [MACRO3_V1]
+                    keep = await _l2.filter_batch([m.value for m in msgs])
+                    for msg, ok in zip(msgs, keep):
                         data = msg.value
                         kafka_consumed_total.inc()
+                        if not ok:
+                            continue
                         apply_seat_request(
                             data["seat_id"],
                             data["request_id"],
@@ -1055,6 +1066,7 @@ async def auth_login(req: _LoginReq, request: _Request):
             "INSERT INTO sessions (session_id, account_id, device_fp, login_ip) "
             "VALUES ($1,$2,$3,$4)", session_id, row["account_id"], device_fp, ip)
         auth_sessions_gauge.set(await conn.fetchval("SELECT COUNT(*) FROM sessions"))
+    await _l2.on_login(session_id, row["account_id"], device_fp)  # [MACRO3_V1]
 
     now = _dt.datetime.now(_dt.timezone.utc)
     created = row["created_at"]
@@ -1793,7 +1805,14 @@ if _REDIS_BACKEND:
                     msgs = [m for ms in batches.values() for m in ms]
                     if not msgs:
                         continue
-                    await _redis_apply_batch(msgs)   # 예외가 나면 커밋하지 않는다
+                    # 2차 판정: 걸린 요청은 판정 후보에서만 뺀다 (순서·추첨·Lua 는 그대로)  [MACRO3_V1]
+                    keep = await _l2.filter_batch([m.value for m in msgs])
+                    dropped = len(msgs) - sum(keep)
+                    msgs = [m for m, ok in zip(msgs, keep) if ok]
+                    if dropped:
+                        kafka_consumed_total.inc(dropped)
+                    if msgs:
+                        await _redis_apply_batch(msgs)   # 예외가 나면 커밋하지 않는다
                     await consumer.commit()
             except asyncio.CancelledError:
                 await consumer.stop()

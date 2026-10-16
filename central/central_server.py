@@ -1580,6 +1580,7 @@ if _REDIS_BACKEND:
 
     async def _redis_publish_confirmed(payload: dict) -> bool:
         """publish_seat_status 와 같은 발행이지만 성공 여부를 돌려준다 (실패 시 방송 대기 목록에 남기기 위해)."""
+        payload = await _hold.annotate(payload)  # 결제 대기 등록 + paid/hold_until  [MACRO3_V1]
         try:
             await kafka_producer.send_and_wait(
                 KAFKA_TOPIC_SEAT_STATUS, key=payload["seat_id"], value=payload
@@ -1621,7 +1622,6 @@ if _REDIS_BACKEND:
                     async with db_conn() as conn:
                         await conn.execute(
                             """
-        payload = await _hold.annotate(payload)  # [MACRO3_V1]
                             INSERT INTO confirmed_seats (seat_id, winner_request_id, winner_pop_id, winner_timestamp_ms, confirmed_at)
                             VALUES ($1, $2, $3, $4, $5)
                             ON CONFLICT (seat_id) DO UPDATE SET

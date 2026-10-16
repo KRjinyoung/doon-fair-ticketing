@@ -57,6 +57,8 @@ services:
       - STATE_BACKEND=redis
       - REDIS_DB_BUFFER=1
       - REDIS_URL=redis://redis:6379/0
+      - HOLD_SEC=${SIM_HOLD_SEC:-20}          # 좌석 선점: 결제 기한(초)  [MACRO3_V1]
+      - L2_MODE=${SIM_L2_MODE:-enforce}       # 2차 판정 모드
       - KAFKA_JUDGE_CONSUMERS=1
       - PROMETHEUS_MULTIPROC_DIR=/tmp/prom_multiproc
       - AUTH_POOL_MAX_SIZE=4

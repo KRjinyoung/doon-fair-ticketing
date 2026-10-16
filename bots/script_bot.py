@@ -118,7 +118,13 @@ def main():
         if i and a.attempts > 1:
             time.sleep(random.uniform(*a.sleep))
         code, data = call(a.base, "/seat-request", hx(), {"seat_id": seat})
-        sent.append({"seat": seat, "status": code,
+        reason = None
+        if code != 200:   # PoP 가 막은 사유 (1차 규칙인지, 서울 명단인지)
+            try:
+                reason = json.loads(data).get("reason")
+            except Exception:
+                pass
+        sent.append({"seat": seat, "status": code, "reason": reason,
                      "request_id": data.get("request_id") if code == 200 and isinstance(data, dict) else None,
                      "at_ms": int(time.time() * 1000)})
     for s in sent:

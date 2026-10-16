@@ -342,9 +342,10 @@ def summarize(res, rounds):
         tab = defaultdict(Counter)
         for a, p in res["prof"].items():
             who = truth.get(a, "human")
-            stage = ("1차" if any(k.startswith("L1:") for k in p["blocks"]) else
-                     "2차" if any(k.startswith("L2:") for k in p["blocks"]) else
-                     "3차" if res["proba"].get(a, 0) >= P_BOT else "통과")
+            own = [k for k in p["blocks"] if not k.split(":", 1)[1].startswith(("blacklist", "rule"))]
+            stage = ("1차" if any(k.startswith("L1:") for k in own) else
+                     "2차" if any(k.startswith("L2:") for k in own) else
+                     "3차" if res["proba"].get(a, 0) >= P_BOT or len(own) < len(p["blocks"]) else "통과")
             tab[who][stage] += 1
         for who, c in sorted(tab.items()):
             lines.append(f"  {who:16} " + "  ".join(f"{s} {c[s]}" for s in ("1차", "2차", "3차", "통과")))

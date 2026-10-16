@@ -15,7 +15,8 @@
 central 은 워커 프로세스가 여러 개라, 전국 합산 숫자는 Redis 에 두고 함께 본다.
 Redis 를 쓸 수 없으면 2차는 꺼진다(모두 통과 — 애매하면 통과).
 
-모드 L2_MODE: off / monitor(판정만, 통과) / enforce(후보에서 제외). 기본 enforce.
+모드 L2_MODE: off / monitor(판정만, 통과) / enforce(후보에서 제외). 기본 monitor (1차 BOT_FILTER_MODE 와 같게).
+실험판은 SIM_L2_MODE 로 enforce.
 """
 import asyncio
 import copy
@@ -28,9 +29,9 @@ from prometheus_client import Counter
 
 import bot_rules as br
 
-MODE = os.environ.get("L2_MODE", "enforce").strip().lower()
+MODE = os.environ.get("L2_MODE", "monitor").strip().lower()
 if MODE not in ("off", "monitor", "enforce"):
-    MODE = "enforce"
+    MODE = "monitor"
 
 DEFAULT_PARAMS = {
     "rate": {"account": [10.0, 30], "device": [10.0, 40]},   # [창(초), 한도] — 전국 합산

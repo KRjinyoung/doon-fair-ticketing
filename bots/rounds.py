@@ -45,7 +45,17 @@ TYPES = {
     "hoarder":   ["--disguise", "--device-fp", "random", "--xff", "random", "--seats", "3", "--no-pay", "--label", "hoarder"],
     "disguised": ["--disguise", "--device-fp", "random", "--xff", "random"],
     "poller":    ["--disguise", "--device-fp", "random", "--xff", "random", "--attempts", "4", "--sleep", "0.3", "1.2", "--label", "poller"],
-    "stealth":   None,   # 브라우저 봇
+    "stealth":   {},     # 브라우저 봇 (값 = 컨테이너 환경변수)
+    # ---- 평가용 공격 (학습·규칙 생성에 쓰지 않고 얼린 방어로만 채점한다)  [MACRO3_EVAL]
+    #   A: 위장 봇 + 발사 시각 0~J ms 무작위 지연
+    #   B: A + 진짜 크롬과 같은 헤더 순서·값 (학습 때 없던 헤더 모양)
+    #   C: 브라우저 봇(스텔스) + 시간 지연 + 기기 지문 흔들기 (기기 공유 흔적 제거)
+    "A50":  ["--disguise", "--device-fp", "random", "--xff", "random", "--jitter", "50", "--label", "A50"],
+    "A100": ["--disguise", "--device-fp", "random", "--xff", "random", "--jitter", "100", "--label", "A100"],
+    "B50":  ["--browser-headers", "--device-fp", "random", "--xff", "random", "--jitter", "50", "--label", "B50"],
+    "B100": ["--browser-headers", "--device-fp", "random", "--xff", "random", "--jitter", "100", "--label", "B100"],
+    "C50":  {"JITTER": "50", "FP_NOISE": "1", "LABEL": "C50"},
+    "C100": {"JITTER": "100", "FP_NOISE": "1", "LABEL": "C100"},
 }
 
 
@@ -59,6 +69,8 @@ def main():
     ap.add_argument("--bot-from", type=int, default=1, help="봇 계정 번호 시작 (botNN)")
     ap.add_argument("--bot-count", type=int, default=30, help="돌려 쓸 봇 계정 수")
     ap.add_argument("--humans", type=int, default=0, help="시뮬레이터 사람 수 (격리 실험판 전용)")
+    ap.add_argument("--fast-humans", type=int, default=0,
+                    help="0초에 빠르게 연타하는 사람 수 (user41.. 계정, 오탐 시험용)")
     ap.add_argument("--types", default="simple,disguised,stealth",
                     help="봇 종류 (쉼표): " + ",".join(TYPES))
     ap.add_argument("--out", default=os.path.join(HERE, "rounds.jsonl"))
@@ -85,10 +97,11 @@ def main():
         for k in range(n):
             email, base = f"bot{(n * (r - 1) + k) % a.bot_count + a.bot_from:02d}@doon.kr", bases[k % len(bases)]
             kind = types[k % len(types)]
-            if TYPES[kind] is None:
+            if isinstance(TYPES[kind], dict):
                 ip = f"10.{100 + k}.{r % 250}.{k + 1}"
+                env = [x for kv in TYPES[kind].items() for x in ("-e", "=".join(kv))]
                 cmd = ["docker", "run", "--rm", "--network", "host", "-e", f"BASE={base}", "-e", f"AT={at}",
-                       "-e", f"EMAIL={email}", "-e", "STEALTH=1", "-e", f"XFF={ip}", IMAGE]
+                       "-e", f"EMAIL={email}", "-e", "STEALTH=1", "-e", f"XFF={ip}", *env, IMAGE]
             else:
                 cmd = [sys.executable, os.path.join(HERE, "script_bot.py"), "--base", base, "--at", at,
                        "--email", email] + TYPES[kind]
@@ -96,11 +109,17 @@ def main():
         hp = a.humans and subprocess.Popen(
             [sys.executable, os.path.join(HERE, "..", "sim", "humans.py"), "--open-at", str(open_at),
              "--n", str(a.humans), "--bases", a.base], stdout=subprocess.PIPE, text=True)
+        fp = a.fast_humans and subprocess.Popen(
+            [sys.executable, os.path.join(HERE, "..", "sim", "humans.py"), "--open-at", str(open_at),
+             "--n", str(a.fast_humans), "--start", "41", "--fast", "--bases", a.base], stdout=subprocess.PIPE, text=True)
         bots = []
         for p in procs:
             out = p.communicate(timeout=180)[0].strip().splitlines()
             bots.append(json.loads(out[-1]) if out and out[-1].startswith("{") else {"error": p.returncode})
         humans = json.loads(hp.communicate(timeout=120)[0].strip().splitlines()[-1])["humans"] if hp else []
+        if fp:
+            for h in json.loads(fp.communicate(timeout=120)[0].strip().splitlines()[-1])["humans"]:
+                humans.append(dict(h, group="fast"))
         with open(a.out, "a", encoding="utf-8") as f:
             f.write(json.dumps({"round": r, "open_at_ms": open_at * 1000,
                                 "open_at": datetime.fromtimestamp(open_at).isoformat(),

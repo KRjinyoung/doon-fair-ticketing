@@ -14,7 +14,7 @@
  * 격리된 시험 환경이나, 사람과 합의한 수집 시간의 운영 판교(rounds.py)에만 쏜다.
  */
 const puppeteer = require('puppeteer-extra');
-const { BASE, AT, EMAIL, PASSWORD = 'doon1234', SEAT, STEALTH = '1', PAY = '1', XFF } = process.env;
+const { BASE, AT, EMAIL, PASSWORD = 'doon1234', SEAT, STEALTH = '1', PAY = '1', XFF, JITTER = '0', FP_NOISE = '0' } = process.env;
 if (STEALTH === '1') puppeteer.use(require('puppeteer-extra-plugin-stealth')());
 
 function msUntil(hms) {           // 오늘 hh:mm:ss.fff 까지 남은 ms
@@ -29,9 +29,16 @@ function msUntil(hms) {           // 오늘 hh:mm:ss.fff 까지 남은 ms
   const page = await browser.newPage();
   // 프록시 풀 흉내: 봇마다 다른 IP 로 보이게 한다 (실험판 nginx 만 이 헤더를 믿는다)  [MACRO3_V1]
   if (XFF) await page.setExtraHTTPHeaders({ 'X-Forwarded-For': XFF });
+  // 기기 지문 흔들기: canvas 결과에 실행마다 다른 값을 섞어 계정마다 다른 기기로 보이게 한다  [MACRO3_EVAL]
+  if (FP_NOISE === '1') {
+    await page.evaluateOnNewDocument(salt => {
+      const orig = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = function (...a) { return orig.apply(this, a) + salt; };
+    }, Math.random().toString(36).slice(2));
+  }
 
   const out = o => console.log(JSON.stringify({
-    bot: STEALTH === '1' ? 'browser-stealth' : 'browser-plain', account: EMAIL || null, ...o }));
+    bot: process.env.LABEL || (STEALTH === '1' ? 'browser-stealth' : 'browser-plain'), account: EMAIL || null, ...o }));
 
   // 1차 필터에 걸리면 좌석 요청 전에 페이지부터 막힌다. 그것도 결과로 남긴다.
   const first = await page.goto(`${BASE}/${EMAIL ? 'login.html?returnTo=/seat.html' : 'seat.html'}`);
@@ -52,10 +59,11 @@ function msUntil(hms) {           // 오늘 hh:mm:ss.fff 까지 남은 ms
     els => els[Math.floor(Math.random() * els.length)].dataset.seatId);
   const sel = `.mini-seat[data-seat-id="${seatId}"]`;
 
-  if (AT) {                       // 마지막 50ms 는 바쁜 대기로 맞춘다
-    const left = msUntil(AT);
+  if (AT) {                       // 마지막 50ms 는 바쁜 대기로 맞춘다 (+ 시간 흔들기 0~JITTER ms)
+    const jit = Math.random() * parseFloat(JITTER);
+    const left = msUntil(AT) + jit;
     if (left > 50) await new Promise(r => setTimeout(r, left - 50));
-    await page.evaluate(end => { while (Date.now() < end); }, Date.now() + Math.max(0, msUntil(AT)));
+    await page.evaluate(end => { while (Date.now() < end); }, Date.now() + Math.max(0, msUntil(AT) + jit));
   }
 
   const firedAt = new Date().toISOString();

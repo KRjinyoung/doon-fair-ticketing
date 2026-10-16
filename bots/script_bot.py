@@ -11,6 +11,8 @@
     --seats N          : 오픈 순간 좌석 N 개를 한꺼번에 노린다 (선점)
     --attempts K --sleep A B : 좌석 K 개를 A~B 초 균등 랜덤 간격으로 차례로 시도한다 (반복)
     --no-pay           : 이겨도 결제하지 않는다 (좌석 선점 봇). 기본은 이기면 결제한다.
+    --jitter MS        : 발사 시각에 0~MS 밀리초 균등 랜덤 지연을 더한다 (회차 간 흩어짐 숨기기)  [MACRO3_EVAL]
+    --browser-headers  : 진짜 크롬(HTTP)과 같은 헤더 순서·값으로 보낸다 (Referer/Origin 포함, 실험판 사람과 같은 모양)
 
   python3 script_bot.py --base http://localhost:18000 --at 21:00:00.000
   python3 script_bot.py --base ... --disguise --email bot01@doon.kr --at 21:00:00.000
@@ -19,6 +21,7 @@
 """
 
 import argparse
+import http.client
 import json
 import os
 import random
@@ -27,6 +30,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime
+from urllib.parse import urlsplit
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from doonload import all_seats  # noqa: E402
@@ -35,7 +39,46 @@ CHROME_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
              "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
 
 
+BROWSER = False   # --browser-headers
+CHROME155 = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+             "(KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36")
+CHROME_ORDER = ["authorization", "accept-language", "user-agent", "content-type", "accept", "origin", "referer",
+                "accept-encoding"]   # sim/humans.py 의 크롬 순서 (실측)
+
+
+def call_browser(base, path, headers, body=None):
+    """진짜 크롬처럼: 정해진 순서로만 헤더를 보낸다 (http.client 가 끼워 넣는 것은 끈다)."""
+    u = urlsplit(base)
+    c = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+    data = json.dumps(body).encode() if body is not None else None
+    c.putrequest("POST" if data is not None else "GET", path, skip_host=True, skip_accept_encoding=True)
+    c.putheader("Host", u.netloc)
+    if data is not None:
+        c.putheader("Content-Length", str(len(data)))
+    vals = {"authorization": headers.get("Authorization"), "accept-language": "ko-KR,ko;q=0.9",
+            "user-agent": CHROME155, "content-type": "application/json", "accept": "*/*", "origin": base,
+            "referer": f"{base}/seat.html?every=1", "accept-encoding": "gzip, deflate"}
+    for k in CHROME_ORDER:
+        if vals[k] is None or (data is None and k in ("content-type", "origin")):
+            continue
+        c.putheader(k, vals[k])
+    if headers.get("X-Forwarded-For"):
+        c.putheader("X-Forwarded-For", headers["X-Forwarded-For"])
+    c.endheaders(data)
+    r = c.getresponse()
+    raw = r.read()
+    if r.getheader("Content-Encoding") == "gzip":
+        import gzip
+        raw = gzip.decompress(raw)
+    c.close()
+    if r.status == 200:
+        return r.status, json.loads(raw or b"null")
+    return r.status, raw.decode()[:200]
+
+
 def call(base, path, headers, body=None):
+    if BROWSER:
+        return call_browser(base, path, headers, body)
     req = urllib.request.Request(base + path, headers=headers,
                                  data=json.dumps(body).encode() if body is not None else None)
     try:
@@ -83,8 +126,12 @@ def main():
     ap.add_argument("--sleep", type=float, nargs=2, default=(0.3, 1.2), help="시도 사이 균등 랜덤 간격(초)")
     ap.add_argument("--no-pay", action="store_true", help="이겨도 결제하지 않는다")
     ap.add_argument("--label", help="출력에 남길 봇 종류 이름")
+    ap.add_argument("--jitter", type=float, default=0, help="발사 시각에 0~MS 균등 랜덤 지연")
+    ap.add_argument("--browser-headers", action="store_true", help="진짜 크롬과 같은 헤더 순서·값")
     ap.add_argument("--at", help="발사 시각 hh:mm:ss.fff (없으면 즉시)")
     a = ap.parse_args()
+    global BROWSER
+    BROWSER = a.browser_headers
 
     h = {"Content-Type": "application/json"}
     if a.disguise:
@@ -111,7 +158,8 @@ def main():
 
     if a.at:
         wait_until(datetime.combine(datetime.now().date(),
-                                    datetime.strptime(a.at, "%H:%M:%S.%f").time()).timestamp())
+                                    datetime.strptime(a.at, "%H:%M:%S.%f").time()).timestamp()
+                   + random.uniform(0, a.jitter) / 1000)
     t0 = time.time()
     sent = []
     for i, seat in enumerate(seats):

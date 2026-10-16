@@ -204,9 +204,14 @@ def main():
     ap.add_argument("--open-at", type=float, required=True, help="오픈 시각 (epoch 초)")
     ap.add_argument("--n", type=int, default=30, help="사람 수 (user01.. 계정을 쓴다)")
     ap.add_argument("--bases", required=True, help="PoP 주소들, 쉼표로 구분")
+    ap.add_argument("--start", type=int, default=1, help="첫 계정 번호 (userNN)")
+    ap.add_argument("--fast", action="store_true",
+                    help="티켓팅 고수: 좌석을 미리 골라 두고 0초에 80~120ms 간격으로 연타 (오탐 시험용)  [MACRO3_EVAL]")
     a = ap.parse_args()
+    if a.fast:
+        P.update(anticipate=1.0, preselect=1.0, mash_gap=(0.08, 0.12))
 
-    people = [Human(i, a.bases.split(",")) for i in range(1, a.n + 1)]
+    people = [Human(i, a.bases.split(",")) for i in range(a.start, a.start + a.n)]
     for h in people:
         h.login()
     ths = [threading.Thread(target=h.play, args=(a.open_at,)) for h in people if h.token]

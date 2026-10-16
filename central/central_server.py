@@ -1068,6 +1068,7 @@ async def auth_login(req: _LoginReq, request: _Request):
             "sid": session_id,          # 이번 접속 (로그인마다 새로)
             "dfp": device_fp,           # 브라우저 지문 (받아서 봉인)
             "age": age_days,            # 계정 나이(일) — 위조 불가한 봇 신호
+            "lip": ip,                  # 로그인 IP — 위조 가능해서 보조 신호로만  [MACRO3_V1]
             "iat": int(now.timestamp()),
             "exp": int((now + _dt.timedelta(minutes=TOKEN_TTL_MIN)).timestamp()),
         },

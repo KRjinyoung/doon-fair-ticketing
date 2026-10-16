@@ -264,8 +264,11 @@ async def kafka_consume_rules_loop():
                 try:
                     active_rules = _br.validate(json.loads(msg.value))
                     _fl.RULESET_VERSION = active_rules["version"]
+                    _fl.apply_params(active_rules["params"].get("l1"))  # [MACRO3_V1] 1차 한도 교체
                     print(f"[{POP_ID}] 봇 규칙 적용: {active_rules['version']} "
-                          f"({len(active_rules['rules'])}개)")
+                          f"(규칙 {len(active_rules['rules'])}개, 명단 계정 "
+                          f"{len(active_rules['blacklist']['accounts'])} · 기기 "
+                          f"{len(active_rules['blacklist']['devices'])})")
                 except Exception as e:
                     print(f"[{POP_ID}] 봇 규칙 묶음 무시 (offset {msg.offset}): {e}")
         except asyncio.CancelledError:
@@ -745,16 +748,19 @@ async def _bot_filter_middleware(request, call_next):
 
     ip = _fl.client_ip_of(request)
     headers = {k.lower(): v for k, v in request.headers.items()}
-    verdict = _fl.first_layer_filter(ip, headers, pop_id=POP_ID)
+    identity = getattr(request.state, "identity", None) or _pa.ANONYMOUS
+    verdict = _fl.first_layer_filter(ip, headers, pop_id=POP_ID, identity=identity)  # [MACRO3_V1]
 
-    # 서울 규칙은 좌석 요청에만 돌린다. 학습 재료(detection-log)가 좌석 요청이라
+    # 서울 명단과 1차 규칙은 좌석 요청에만 돌린다. 학습 재료(detection-log)가 좌석 요청이라
     # 다른 경로에 돌리면 검증한 적 없는 곳에서 차단하게 된다.  [BOTRULES_V1]
-    if verdict.passed and active_rules["rules"] and request.url.path == "/seat-request":
-        identity = getattr(request.state, "identity", None) or _pa.ANONYMOUS
-        rule_id = _br.match(active_rules, {
-            "client_ip": ip, "headers": _fl.header_snapshot(request), **identity.as_payload()})
-        if rule_id:
-            verdict = _fl.FilterResult(passed=False, reason=f"rule:{rule_id}")
+    # 그림자 규칙은 막지 않고 detection-log 에 '막았을 것'으로만 남긴다.  [MACRO3_V1]
+    request.state.shadow_hits = []
+    if verdict.passed and request.url.path == "/seat-request":
+        block, shadow = _br.evaluate(active_rules, {
+            "client_ip": ip, "headers": _fl.header_snapshot(request), **identity.as_payload()}, 1)
+        request.state.shadow_hits = shadow
+        if block:
+            verdict = _fl.FilterResult(passed=False, reason=block)
             _fl.bot_flagged.labels(pop_id=POP_ID, reason=verdict.reason).inc()
 
     if (not verdict.passed) and _fl.MODE == "enforce":
@@ -762,7 +768,7 @@ async def _bot_filter_middleware(request, call_next):
         # 429 는 "속도를 줄여라", 403 은 "너는 안 된다".
         # 폴링 봇에게는 429 를 주는 편이 의미가 맞고, 정상 사용자가
         # 오탐된 경우에도 잠시 뒤 재시도하면 풀린다는 신호가 된다.
-        code = 429 if verdict.reason == "rate_limit" else 403
+        code = 429 if verdict.reason.startswith("rate_limit") else 403
         # 막힌 좌석 요청은 핸들러까지 안 가서 detection-log 에 안 남는다.
         # "1차가 무엇을 막았나"를 서울이 알 수 있게 여기서 한 줄 남긴다.
         # 좌석 요청만 남긴다. 폴링까지 남기면 봇 한 대가 Kafka 를 채운다.  [DETLOG_V2]
@@ -790,6 +796,7 @@ def _first_layer_payload(request) -> dict:
         "first_layer_mode": _fl.MODE,
         "first_layer_passed": verdict.passed if verdict else None,
         "first_layer_reason": (verdict.reason or None) if verdict else None,
+        "first_layer_shadow": getattr(request.state, "shadow_hits", None) or [],  # [MACRO3_V1]
         "headers": _fl.header_snapshot(request),
     }
 

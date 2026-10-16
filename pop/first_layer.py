@@ -100,6 +100,43 @@ EXEMPT_PATHS = frozenset({"/metrics", "/health", "/clock-offset"})
 BOT_UA_TOKENS = ("python", "curl", "wget", "go-http",
                  "java", "scrapy", "headless", "bot")
 
+# ================================================================
+#  1차 한도 값  [MACRO3_V1]
+# ================================================================
+# 위 상수는 기본값이다. 서울 AI 가 규칙 묶음의 params.l1 로 값을 보내면
+# apply_params() 가 이 딕셔너리를 바꾸고, 다음 요청부터 새 값으로 판정한다.
+#   rate: {키 종류: [창(초), 한도]}  — IP·계정·기기별로 따로 센다.
+#   계정·기기는 로그인 토큰에서 온 값이라 토큰이 있는 요청에만 센다.
+DEFAULT_PARAMS = {
+    "rate": {
+        "ip": [WINDOW_SEC, MAX_REQUESTS],
+        "account": [float(os.environ.get("BOT_RATE_ACCOUNT_WINDOW_SEC", "10")),
+                    int(os.environ.get("BOT_RATE_ACCOUNT_MAX", "20"))],
+        "device": [float(os.environ.get("BOT_RATE_DEVICE_WINDOW_SEC", "10")),
+                   int(os.environ.get("BOT_RATE_DEVICE_MAX", "30"))],
+    },
+    "ua_tokens": list(BOT_UA_TOKENS),
+    "block_ttl_sec": BLOCK_TTL_SEC,
+}
+PARAMS = {"rate": dict(DEFAULT_PARAMS["rate"]), "ua_tokens": list(BOT_UA_TOKENS),
+          "block_ttl_sec": BLOCK_TTL_SEC}
+
+
+def apply_params(l1) -> dict:
+    """규칙 묶음의 params.l1 을 기본값 위에 덮어쓴다. 형식이 틀린 칸은 기본값을 쓴다."""
+    l1 = l1 if isinstance(l1, dict) else {}
+    rate = dict(DEFAULT_PARAMS["rate"])
+    for k, v in (l1.get("rate") or {}).items():
+        if k in rate and isinstance(v, (list, tuple)) and len(v) == 2 and v[0] > 0 and v[1] > 0:
+            rate[k] = [float(v[0]), int(v[1])]
+    tokens = l1.get("ua_tokens")
+    tokens = [str(t).lower() for t in tokens] if isinstance(tokens, list) and tokens else list(BOT_UA_TOKENS)
+    ttl = l1.get("block_ttl_sec")
+    ttl = float(ttl) if isinstance(ttl, (int, float)) and ttl > 0 else BLOCK_TTL_SEC
+    PARAMS.update(rate=rate, ua_tokens=tokens, block_ttl_sec=ttl)
+    return PARAMS
+
+
 # 지금 돌고 있는 규칙의 이름. detection-log 에 함께 남겨서, 나중에 같은 로그를
 # 같은 규칙으로 다시 돌렸을 때 같은 판정이 나오는지 확인할 수 있게 한다.
 # 규칙을 바꾸면 이 값도 바꾼다.  [DETLOG_V2]
@@ -147,8 +184,8 @@ class FilterResult:
 # ================================================================
 #  상태 저장소
 # ================================================================
-_req_log: dict = defaultdict(deque)   # IP -> 최근 요청 시각들 (슬라이딩 윈도우)
-_blocked: dict = {}                   # IP -> 차단 만료 시각(epoch)
+_req_log: dict = defaultdict(deque)   # "ip:..."/"account:..."/"device:..." -> 최근 요청 시각들
+_blocked: dict = {}                   # 같은 키 -> 차단 만료 시각(epoch)
 _last_sweep = 0.0                     # 마지막 청소 시각
 
 
@@ -250,36 +287,38 @@ def _sweep(now: float, pop_id: str):
 
 
 # ================================================================
-#  검사 ①: 차단 목록 (만료 있음)
+#  검사 ②: 차단 목록 (IP·계정·기기, 만료 있음)
 # ================================================================
-def check_blocklist(ip: str, now: float) -> bool:
-    """True=정상, False=차단 목록에 있음"""
-    until = _blocked.get(ip)
+def check_blocklist(key: str, now: float) -> bool:
+    """True=정상, False=차단 목록에 있음. key 는 "ip:1.2.3.4" 처럼 종류를 앞에 붙인다."""
+    until = _blocked.get(key)
     if until is None:
         return True
     if until <= now:
-        del _blocked[ip]     # 만료됐으면 풀어준다
+        del _blocked[key]     # 만료됐으면 풀어준다
         return True
     return False
 
 
 # ================================================================
-#  검사 ②: 요청 빈도  ― 취소표 폴링 봇 대응
+#  검사 ③: 요청 빈도 (IP·계정·기기)  ― 취소표 폴링 봇, 한 기기 다계정 봇 대응
 # ================================================================
-def check_rate_limit(ip: str, now: float) -> bool:
+def check_rate_limit(key: str, now: float, kind: str = "ip") -> bool:
     """
-    최근 WINDOW_SEC 초 안의 요청 수가 MAX_REQUESTS 를 넘으면 봇으로 본다.
+    최근 창(초) 안의 요청 수가 한도를 넘으면 봇으로 보고 차단 목록에 올린다.
+    창과 한도는 PARAMS["rate"][kind] (서울이 정교화하는 값).
 
     deque(양방향 큐)를 쓰는 이유는 앞에서 빼고 뒤에서 넣는 연산이
     O(1) 이기 때문이다. 리스트로 하면 앞에서 뺄 때마다 전체가 밀린다.
     """
-    dq = _req_log[ip]
-    cutoff = now - WINDOW_SEC
+    window, limit = PARAMS["rate"][kind]
+    dq = _req_log[key]
+    cutoff = now - window
     while dq and dq[0] < cutoff:
         dq.popleft()
     dq.append(now)
-    if len(dq) > MAX_REQUESTS:
-        _blocked[ip] = now + BLOCK_TTL_SEC
+    if len(dq) > limit:
+        _blocked[key] = now + PARAMS["block_ttl_sec"]
         return False
     return True
 
@@ -301,7 +340,7 @@ def check_headers(headers: dict):
 
     if not ua:
         return False, signals                      # 정상 브라우저는 항상 보낸다
-    if any(tok in ua for tok in BOT_UA_TOKENS):
+    if any(tok in ua for tok in PARAMS["ua_tokens"]):
         return False, signals
     if "accept-language" not in headers:
         return False, signals                      # 브라우저는 언어 설정을 함께 보낸다
@@ -313,11 +352,14 @@ def check_headers(headers: dict):
 # ================================================================
 #  메인 진입점
 # ================================================================
-def first_layer_filter(ip: str, headers: dict, pop_id: str = "unknown") -> FilterResult:
+def first_layer_filter(ip: str, headers: dict, pop_id: str = "unknown", identity=None) -> FilterResult:
     """
-    검사를 싼 것부터 순서대로 돌린다: 차단목록 -> 빈도 -> 헤더.
+    검사를 싼 것부터 순서대로 돌린다:
+      ① 위조 토큰 → ② 차단 목록(IP·계정·기기) → ③ 요청 빈도(IP·계정·기기) → ④ 헤더.
     하나라도 걸리면 즉시 반환하므로 뒤 검사는 생략된다.
+    서울 명단과 1차 규칙(⑤⑥)은 좌석 요청에서 pop_server 가 이어서 돌린다.
 
+    identity 는 로그인 검증 결과(pop_auth.Identity). 없으면 익명으로 본다.
     반환값의 passed 는 "판정 결과"이지 "차단 여부"가 아니다.
     실제 차단 여부는 호출하는 쪽이 MODE 를 보고 결정한다.
     """
@@ -334,12 +376,30 @@ def first_layer_filter(ip: str, headers: dict, pop_id: str = "unknown") -> Filte
 
     bot_evaluated.labels(pop_id=pop_id).inc()
 
+    acct = getattr(identity, "account_id", None)
+    dev = getattr(identity, "device_fp", None)
+    keys = [("ip", f"ip:{ip}")]
+    if acct:
+        keys.append(("account", f"account:{acct}"))
+    if dev:
+        keys.append(("device", f"device:{dev}"))
+
     result = None
-    if not check_blocklist(ip, now):
-        result = FilterResult(passed=False, reason="blocked_ip")
-    elif not check_rate_limit(ip, now):
-        result = FilterResult(passed=False, reason="rate_limit")
-    else:
+    if getattr(identity, "reason", None) == "invalid":
+        # 서명이 맞지 않는 토큰 = 로그인 때 봉인한 값을 고친 흔적 (만료는 위조가 아니다)
+        result = FilterResult(passed=False, reason="forged_token")
+    if result is None:
+        for kind, key in keys:
+            if not check_blocklist(key, now):
+                result = FilterResult(passed=False, reason=f"blocked_{kind}")
+                break
+    if result is None:
+        for kind, key in keys:
+            if not check_rate_limit(key, now, kind):
+                result = FilterResult(passed=False,
+                                      reason="rate_limit" if kind == "ip" else f"rate_limit_{kind}")
+                break
+    if result is None:
         ok, signals = check_headers(headers)
         if not ok:
             result = FilterResult(passed=False, reason="abnormal_headers", signals=signals)
@@ -360,8 +420,7 @@ def stats() -> dict:
     now = time.time()
     return {
         "mode": MODE,
-        "window_sec": WINDOW_SEC,
-        "max_requests": MAX_REQUESTS,
+        "params": PARAMS,
         "tracked_ips": len(_req_log),
         "blocked_ips": len(_blocked),
         "blocked_sample": [

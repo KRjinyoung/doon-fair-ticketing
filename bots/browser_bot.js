@@ -73,8 +73,8 @@ function msUntil(hms) {           // 오늘 hh:mm:ss.fff 까지 남은 ms
   try { rid = JSON.parse(text).request_id || null; } catch (e) {}
   if (rid) {
     won = await page.evaluate(async (s, r) => {
-      for (let i = 0; i < 40; i++) {
-        await new Promise(ok => setTimeout(ok, 300));
+      for (let i = 0; i < 24; i++) {
+        await new Promise(ok => setTimeout(ok, 500));   // 좌석 화면과 같은 0.5초
         const d = await (await fetch('/seat-status/' + s)).json();
         if (d.status === 'confirmed') return d.winner_request_id === r;
       }

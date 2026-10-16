@@ -51,6 +51,9 @@ import bot_rules  # noqa: E402
 FEATURES = ["account_age_days", "device_accounts", "concurrent_seats", "interval_cv", "interval_skew", "spread_ms"]
 KO = {"account_age_days": "계정 나이(일)", "device_accounts": "같은 기기 계정 수", "concurrent_seats": "1초 안에 노린 좌석 수",
       "interval_cv": "요청 간격 변동계수", "interval_skew": "요청 간격 비대칭도", "spread_ms": "회차 간 도착 흩어짐(ms)"}
+# 모델에 넣는 feature. 계정 나이는 '믿을 만한 사람' 라벨을 정하는 데 썼으므로 모델에서는 뺀다
+# (넣으면 모델이 라벨 정의를 그대로 외운다). 계정 나이는 2차(기기 농장 판정)가 쓴다.
+MODEL_FEATURES = [c for c in FEATURES if c != "account_age_days"]
 CERTAIN = ("abnormal_headers", "forged_token", "device_farm", "seat_hoarding", "identity_mismatch", "rate_limit")
 P_BOT = 0.9
 TRUST_AGE = 30
@@ -158,23 +161,26 @@ def fit_predict(prof):
     from sklearn.ensemble import HistGradientBoostingClassifier
     from sklearn.inspection import permutation_importance
     accts = [a for a, p in prof.items() if p["n_rounds"] >= 1]
-    X = np.array([[np.nan if prof[a]["f"][c] is None else prof[a]["f"][c] for c in FEATURES] for a in accts], float)
+    X = np.array([[np.nan if prof[a]["f"][c] is None else prof[a]["f"][c] for c in MODEL_FEATURES] for a in accts], float)
     y = np.array([-1 if prof[a]["label"] is None else prof[a]["label"] for a in accts])
     lab = y >= 0
     if len(set(y[lab])) < 2 or lab.sum() < 6:
         return {}, {}, {}
-    m = HistGradientBoostingClassifier(max_iter=200, min_samples_leaf=3, random_state=0).fit(X[lab], y[lab])
-    proba = dict(zip(accts, m.predict_proba(X)[:, 1]))
-    imp = permutation_importance(m, X[lab], y[lab], n_repeats=5, random_state=0).importances_mean
-    importance = {c: float(v) for c, v in zip(FEATURES, imp)}
+    # 아직 값이 거의 없는 feature 는 이번 학습에서 뺀다 (초반 회차엔 요청 간격·흩어짐이 비어 있다)
+    use = [j for j in range(len(MODEL_FEATURES)) if np.isfinite(X[lab][:, j]).sum() >= 4]
+    m = HistGradientBoostingClassifier(max_iter=200, min_samples_leaf=3, random_state=0).fit(X[lab][:, use], y[lab])
+    proba = dict(zip(accts, m.predict_proba(X[:, use])[:, 1]))
+    imp = permutation_importance(m, X[lab][:, use], y[lab], n_repeats=5, random_state=0).importances_mean
+    importance = {c: 0.0 for c in MODEL_FEATURES}
+    importance.update({MODEL_FEATURES[j]: float(v) for j, v in zip(use, imp)})
     # 계정별 근거: 중요도가 큰 feature 중 이 계정 값이 믿을 만한 사람들의 범위를 벗어난 것
     hum = X[y == 0]
-    med = np.nanmedian(hum, axis=0) if len(hum) else np.full(len(FEATURES), np.nan)
+    med = np.nanmedian(hum, axis=0) if len(hum) else np.full(len(MODEL_FEATURES), np.nan)
     iqr = (np.nanpercentile(hum, 75, axis=0) - np.nanpercentile(hum, 25, axis=0)) if len(hum) else med
     reasons = {}
     for a, row in zip(accts, X):
         cand = []
-        for j, c in enumerate(FEATURES):
+        for j, c in enumerate(MODEL_FEATURES):
             if np.isnan(row[j]) or np.isnan(med[j]):
                 continue
             z = abs(row[j] - med[j]) / (iqr[j] if iqr[j] > 0 else (abs(med[j]) or 1.0))
@@ -213,11 +219,11 @@ def refine(prof, proba, rs, round_no):
         l2.setdefault(k, copy.deepcopy(v))
     notes = []
 
-    def tighten(name, cur, values_h, values_b, floor):
-        """믿을 만한 사람 최댓값 + 여유 1 까지 조인다. 조여서 더 잡히는 봇이 있을 때만."""
+    def tighten(name, cur, values_h, values_b, floor, margin=1):
+        """믿을 만한 사람 최댓값 + 여유 까지 조인다. 조여서 더 잡히는 봇이 있을 때만."""
         if not values_h:
             return cur
-        new = max(floor, max(values_h) + 1)
+        new = max(floor, max(values_h) + margin)
         if new < cur and any(new < v <= cur for v in values_b):
             notes.append(f"{name}: {cur} → {new} (사람 최대 {max(values_h)}, 새로 걸리는 봇 "
                          f"{sum(1 for v in values_b if new < v <= cur)})")
@@ -229,7 +235,9 @@ def refine(prof, proba, rs, round_no):
             win, cur = cfg["rate"][kind]
             vh = [peaks(prof[a]["reqs"], win, by_pop) for a in humans]
             vb = [peaks(prof[a]["reqs"], win, by_pop) for a in bots]
-            cfg["rate"][kind] = [win, tighten(f"{layer} {kind} 요청 한도({win:g}초)", cur, vh, vb, 3)]
+            # 요청 수는 새로고침 등으로 사람마다 크게 다르므로 넉넉히: 최소 5, 사람 최대의 2배
+            cfg["rate"][kind] = [win, tighten(f"{layer} {kind} 요청 한도({win:g}초)", cur, vh, vb, 5,
+                                              margin=max(vh, default=0) + 1)]
     da = l2["device_accounts"]
     da["max"] = tighten("2차 기기당 계정 수", da["max"],
                         [prof[a]["f"]["device_accounts"] or 1 for a in humans],
@@ -377,6 +385,9 @@ def main():
     seen, ver = 0, 0
     print("[서울 AI 3차] 시작 — 라벨은 1·2차 판정에서, 명단·규칙·한도를 회차마다 다시 계산", flush=True)
     while True:
+        if not os.path.exists(a.rounds):   # 첫 회차가 끝나기 전
+            time.sleep(1)
+            continue
         rounds = [json.loads(l) for l in open(a.rounds) if l.strip()]
         if len(rounds) == seen and not a.once:
             time.sleep(1)
@@ -387,7 +398,13 @@ def main():
         t0 = time.time()
         with LOCK:
             events = list(LOG)
-        res = analyze(events, rounds, current)
+        try:
+            res = analyze(events, rounds, current)
+        except Exception as e:   # 분석이 실패해도 루프는 멈추지 않고 지금 규칙을 유지한다
+            print(f"[서울 AI 3차] 분석 실패, 이전 규칙 유지: {e!r}", flush=True)
+            if a.once:
+                raise
+            continue
         last = rounds[-1]["round"] if rounds else 0
         if res is None:
             print(f"[서울 AI 3차] {last}회차 후: 라벨이 아직 부족 (봇·사람 둘 다 필요)", flush=True)

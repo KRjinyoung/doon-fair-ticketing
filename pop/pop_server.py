@@ -777,7 +777,8 @@ async def _bot_filter_middleware(request, call_next):
     ip = _fl.client_ip_of(request)
     headers = {k.lower(): v for k, v in request.headers.items()}
     identity = getattr(request.state, "identity", None) or _pa.ANONYMOUS
-    verdict = _fl.first_layer_filter(ip, headers, pop_id=POP_ID, identity=identity)  # [MACRO3_V1]
+    verdict = _fl.first_layer_filter(ip, headers, pop_id=POP_ID, identity=identity,
+                                     seat_request=request.url.path == "/seat-request")  # [MACRO3_V1]
 
     # 서울 명단과 1차 규칙은 좌석 요청에만 돌린다. 학습 재료(detection-log)가 좌석 요청이라
     # 다른 경로에 돌리면 검증한 적 없는 곳에서 차단하게 된다.  [BOTRULES_V1]

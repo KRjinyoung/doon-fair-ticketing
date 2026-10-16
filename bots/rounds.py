@@ -34,14 +34,14 @@ IMAGE = "doon-browser-bot"
 
 # 봇 종류 → script_bot.py 인자. 종류마다 다른 단계에서 잡히도록 행동을 나눈다.  [MACRO3_V1]
 #   simple   : 파이썬 이름표                                   → 1차 User-Agent
-#   farm     : 위장 이름표, 기기 하나를 여러 계정이 같이 씀     → 2차 기기당 계정 수
+#   farm     : 위장 이름표, IP 바꿈, 기기 하나를 여러 계정이 같이 씀 → 2차 기기당 계정 수
 #   hoarder  : 위장, 기기·IP 바꿈, 좌석 3개 선점 후 결제 안 함  → 2차 미결제 선점
 #   disguised: 위장, 기기·IP 바꿈, 이기면 결제                  → 3차 AI
 #   poller   : disguised + 좌석 4개를 균등 랜덤 간격으로 시도    → 3차 AI (요청 간격 분포)
 #   stealth  : 진짜 크롬 + stealth 플러그인, IP 바꿈, 결제       → 3차 AI
 TYPES = {
     "simple":    [],
-    "farm":      ["--disguise", "--label", "farm"],
+    "farm":      ["--disguise", "--xff", "random", "--label", "farm"],
     "hoarder":   ["--disguise", "--device-fp", "random", "--xff", "random", "--seats", "3", "--no-pay", "--label", "hoarder"],
     "disguised": ["--disguise", "--device-fp", "random", "--xff", "random"],
     "poller":    ["--disguise", "--device-fp", "random", "--xff", "random", "--attempts", "4", "--sleep", "0.3", "1.2", "--label", "poller"],

@@ -58,10 +58,10 @@ def rand_ip():
 
 
 def result(base, h, seat, rid, limit=12):
-    """seat-status 를 0.3초마다 본다. True=이김, False=짐, None=모름."""
+    """좌석 화면처럼 seat-status 를 0.5초마다 본다. True=이김, False=짐, None=모름."""
     end = time.time() + limit
     while time.time() < end:
-        time.sleep(0.3)
+        time.sleep(0.5)
         code, d = call(base, f"/seat-status/{seat}", h)
         if code == 200 and isinstance(d, dict) and d.get("status") == "confirmed":
             return d.get("winner_request_id") == rid

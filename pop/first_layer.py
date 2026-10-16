@@ -352,7 +352,8 @@ def check_headers(headers: dict):
 # ================================================================
 #  메인 진입점
 # ================================================================
-def first_layer_filter(ip: str, headers: dict, pop_id: str = "unknown", identity=None) -> FilterResult:
+def first_layer_filter(ip: str, headers: dict, pop_id: str = "unknown", identity=None,
+                       seat_request: bool = True) -> FilterResult:
     """
     검사를 싼 것부터 순서대로 돌린다:
       ① 위조 토큰 → ② 차단 목록(IP·계정·기기) → ③ 요청 빈도(IP·계정·기기) → ④ 헤더.
@@ -360,6 +361,8 @@ def first_layer_filter(ip: str, headers: dict, pop_id: str = "unknown", identity
     서울 명단과 1차 규칙(⑤⑥)은 좌석 요청에서 pop_server 가 이어서 돌린다.
 
     identity 는 로그인 검증 결과(pop_auth.Identity). 없으면 익명으로 본다.
+    계정·기기 기준(차단 목록·요청 수)은 좌석 요청에만 센다. 좌석 화면은 결과를 기다리며
+    0.5초마다 상태를 조회하므로, 조회까지 세면 진짜 사용자가 몇 초 만에 한도를 넘는다.
     반환값의 passed 는 "판정 결과"이지 "차단 여부"가 아니다.
     실제 차단 여부는 호출하는 쪽이 MODE 를 보고 결정한다.
     """
@@ -379,9 +382,9 @@ def first_layer_filter(ip: str, headers: dict, pop_id: str = "unknown", identity
     acct = getattr(identity, "account_id", None)
     dev = getattr(identity, "device_fp", None)
     keys = [("ip", f"ip:{ip}")]
-    if acct:
+    if acct and seat_request:
         keys.append(("account", f"account:{acct}"))
-    if dev:
+    if dev and seat_request:
         keys.append(("device", f"device:{dev}"))
 
     result = None

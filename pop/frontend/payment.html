@@ -197,15 +197,36 @@ agree.addEventListener('click', function () {
 payBtn.addEventListener('click', function () {
   payBtn.disabled = true;
   payBtn.textContent = '결제 처리 중...';
-  setTimeout(function () {
-    // 예매번호: 좌석과 시각으로 만든 표시용 값. 실제 결제/발권 연동은 범위 밖.
-    var no = 'DOON-' + Date.now().toString(36).toUpperCase().slice(-6) + '-' + seat;
-    document.getElementById('doneSeat').textContent = '임영웅 : IM HERO TOUR 2026  ·  ' + seat;
-    document.getElementById('bookNo').textContent = no;
-    document.getElementById('payView').style.display = 'none';
-    document.getElementById('doneView').style.display = 'block';
-    window.scrollTo(0, 0);
-  }, 900);
+  // 결제 대기(좌석 선점)를 끝낸다. 기한 안에 결제하지 않으면 중앙이 좌석을 돌려준다.  [MACRO3_V1]
+  // 실제 카드 결제 연동은 범위 밖이고, 여기서는 "결제 완료" 신호만 보낸다.
+  var h = { 'Content-Type': 'application/json' };
+  var tok = localStorage.getItem('doon_token');
+  if (tok) h['Authorization'] = 'Bearer ' + tok;
+  fetch('/payment', { method: 'POST', headers: h,
+                      body: JSON.stringify({ seat_id: seat, request_id: reqId }) })
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, code: r.status, d: d }; }); })
+    .then(function (res) {
+      if (!res.ok) {
+        payBtn.textContent = '결제하기';
+        payBtn.disabled = false;
+        alert(res.code === 410 ? '결제 기한이 지나 좌석이 반환되었습니다.'
+            : res.code === 409 ? '이 좌석의 당첨 정보가 없습니다.'
+            : '결제를 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        return;
+      }
+      // 예매번호: 좌석과 시각으로 만든 표시용 값.
+      var no = 'DOON-' + Date.now().toString(36).toUpperCase().slice(-6) + '-' + seat;
+      document.getElementById('doneSeat').textContent = '임영웅 : IM HERO TOUR 2026  ·  ' + seat;
+      document.getElementById('bookNo').textContent = no;
+      document.getElementById('payView').style.display = 'none';
+      document.getElementById('doneView').style.display = 'block';
+      window.scrollTo(0, 0);
+    })
+    .catch(function () {
+      payBtn.textContent = '결제하기';
+      payBtn.disabled = false;
+      alert('결제를 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    });
 });
 </script>
 

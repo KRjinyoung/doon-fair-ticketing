@@ -137,6 +137,9 @@ async def check(items: list) -> list:
         acct, dev, sid = d.get("account_id"), d.get("device_fp"), d.get("session_id")
         steps = []
         if d.get("identity_verified") and acct:
+            if d.get("request_id"):
+                pipe.set(f"l2:req:{d['request_id']}", acct, ex=3600)   # 결제·미결제 처리에서 계정을 찾는다
+                steps.append(None)
             if sid:
                 pipe.hmget(f"l2:sess:{sid}", "a", "d")
                 steps.append("sess")

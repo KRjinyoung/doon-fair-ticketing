@@ -77,6 +77,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import httpx
+from fastapi.responses import JSONResponse as _PayJSON
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -707,6 +708,28 @@ def receive_booking_entry():
 @app.get("/entries")
 def get_all_entries():
     return entry_records
+
+
+class PaymentRequest(BaseModel):
+    seat_id: str
+    request_id: str
+
+
+@app.post("/payment")
+async def payment(req: PaymentRequest, request: Request):
+    """
+    결제. 좌석 선점(결제 대기)을 끝낸다.  [MACRO3_V1]
+    결제 대기는 중앙(Redis)에 있으므로 그대로 전달하고, 로그인한 계정을 함께 실어
+    중앙이 "이 좌석을 이긴 계정이 맞나"를 확인하게 한다.
+    """
+    identity = getattr(request.state, "identity", None)
+    try:
+        res = await http_client.post(f"{CENTRAL_URL}/payment", json={
+            "seat_id": req.seat_id, "request_id": req.request_id,
+            "account_id": getattr(identity, "account_id", None)})
+        return _PayJSON(status_code=res.status_code, content=res.json())
+    except (httpx.HTTPError, ValueError):
+        return _PayJSON(status_code=503, content={"error": "central_unreachable"})
 
 
 # 정적 파일(정적 UI) 서빙 — 반드시 위의 API 라우트들을 다 정의한 뒤 마지막에 마운트해야

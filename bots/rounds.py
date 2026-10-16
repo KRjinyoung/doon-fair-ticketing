@@ -32,6 +32,22 @@ from datetime import datetime
 HERE = os.path.dirname(os.path.abspath(__file__))
 IMAGE = "doon-browser-bot"
 
+# 봇 종류 → script_bot.py 인자. 종류마다 다른 단계에서 잡히도록 행동을 나눈다.  [MACRO3_V1]
+#   simple   : 파이썬 이름표                                   → 1차 User-Agent
+#   farm     : 위장 이름표, 기기 하나를 여러 계정이 같이 씀     → 2차 기기당 계정 수
+#   hoarder  : 위장, 기기·IP 바꿈, 좌석 3개 선점 후 결제 안 함  → 2차 미결제 선점
+#   disguised: 위장, 기기·IP 바꿈, 이기면 결제                  → 3차 AI
+#   poller   : disguised + 좌석 4개를 균등 랜덤 간격으로 시도    → 3차 AI (요청 간격 분포)
+#   stealth  : 진짜 크롬 + stealth 플러그인, IP 바꿈, 결제       → 3차 AI
+TYPES = {
+    "simple":    [],
+    "farm":      ["--disguise", "--label", "farm"],
+    "hoarder":   ["--disguise", "--device-fp", "random", "--xff", "random", "--seats", "3", "--no-pay", "--label", "hoarder"],
+    "disguised": ["--disguise", "--device-fp", "random", "--xff", "random"],
+    "poller":    ["--disguise", "--device-fp", "random", "--xff", "random", "--attempts", "4", "--sleep", "0.3", "1.2", "--label", "poller"],
+    "stealth":   None,   # 브라우저 봇
+}
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -43,6 +59,8 @@ def main():
     ap.add_argument("--bot-from", type=int, default=1, help="봇 계정 번호 시작 (botNN)")
     ap.add_argument("--bot-count", type=int, default=30, help="돌려 쓸 봇 계정 수")
     ap.add_argument("--humans", type=int, default=0, help="시뮬레이터 사람 수 (격리 실험판 전용)")
+    ap.add_argument("--types", default="simple,disguised,stealth",
+                    help="봇 종류 (쉼표): " + ",".join(TYPES))
     ap.add_argument("--out", default=os.path.join(HERE, "rounds.jsonl"))
     ap.add_argument("--yes", action="store_true")
     a = ap.parse_args()
@@ -61,22 +79,26 @@ def main():
         print(f"[{r}/{a.first + a.rounds - 1}] {at} 오픈 — 봇 출발")
 
         bases = a.base.split(",")
-        n = 3 * a.copies
+        types = a.types.split(",")
+        n = len(types) * a.copies
         procs = []
         for k in range(n):
             email, base = f"bot{(n * (r - 1) + k) % a.bot_count + a.bot_from:02d}@doon.kr", bases[k % len(bases)]
-            script = [sys.executable, os.path.join(HERE, "script_bot.py"), "--base", base, "--at", at, "--email", email]
-            procs.append(subprocess.Popen(
-                [script, script + ["--disguise"],
-                 ["docker", "run", "--rm", "--network", "host", "-e", f"BASE={base}",
-                  "-e", f"AT={at}", "-e", f"EMAIL={email}", "-e", "STEALTH=1", IMAGE]][k % 3],
-                stdout=subprocess.PIPE, text=True))
+            kind = types[k % len(types)]
+            if TYPES[kind] is None:
+                ip = f"10.{100 + k}.{r % 250}.{k + 1}"
+                cmd = ["docker", "run", "--rm", "--network", "host", "-e", f"BASE={base}", "-e", f"AT={at}",
+                       "-e", f"EMAIL={email}", "-e", "STEALTH=1", "-e", f"XFF={ip}", IMAGE]
+            else:
+                cmd = [sys.executable, os.path.join(HERE, "script_bot.py"), "--base", base, "--at", at,
+                       "--email", email] + TYPES[kind]
+            procs.append(subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True))
         hp = a.humans and subprocess.Popen(
             [sys.executable, os.path.join(HERE, "..", "sim", "humans.py"), "--open-at", str(open_at),
              "--n", str(a.humans), "--bases", a.base], stdout=subprocess.PIPE, text=True)
         bots = []
         for p in procs:
-            out = p.communicate(timeout=120)[0].strip().splitlines()
+            out = p.communicate(timeout=180)[0].strip().splitlines()
             bots.append(json.loads(out[-1]) if out and out[-1].startswith("{") else {"error": p.returncode})
         humans = json.loads(hp.communicate(timeout=120)[0].strip().splitlines()[-1])["humans"] if hp else []
         with open(a.out, "a", encoding="utf-8") as f:

@@ -52,6 +52,8 @@ P = dict(
     max_attempts=3,
     open_sec=30,                # seat.html?every= 가 열려 있는 시간
     lat_mobile=(0.015, 0.045), lat_desktop=(0.003, 0.015),  # 한쪽 방향 네트워크 지연(s)
+    pay=0.97,                   # 이기면 결제하는 비율 (가끔 결제 화면에서 그만둔다)  [MACRO3_V1]
+    pay_median=6.0, pay_sigma=0.4,          # 이긴 뒤 결제 버튼까지 걸리는 시간(s)
 )
 
 # 기기 프로필: (비율, 모바일?, 헤더 순서, 값). 순서는 실측 그대로다.
@@ -177,6 +179,10 @@ class Human:
             rid = (d or {}).get("request_id")
             self.sent.append({"seat": seat, "at_ms": int(time.time() * 1000), "status": code})
             won = self.wait_result(seat, rid)
+            if won and rng.random() < P["pay"]:   # 이기면 결제 화면에서 결제한다  [MACRO3_V1]
+                time.sleep(min(15.0, lognorm(rng, P["pay_median"], P["pay_sigma"])))
+                code, _ = self.call("POST", "/payment", {"seat_id": seat, "request_id": rid})
+                self.sent[-1]["paid"] = code
             if won is not False:   # 이겼거나(True) 결과를 모르면(None) 그만
                 return
             t = time.time() + lognorm(rng, P["retry_median"], P["retry_sigma"])

@@ -579,7 +579,9 @@ async def get_seat_status(seat_id: str):
     로컬 캐시(seat_status_cache)에서 바로 응답한다 — central 왕복 없이 즉시 응답.
     """
     cached = seat_status_cache.get(seat_id)
-    if cached is None:
+    # available = 초기화 스크립트나 결제 기한 초과로 다시 열린 좌석. 확정으로 읽으면
+    # winner_request_id 가 없어 500 이 났다.  [MACRO3_V1]
+    if cached is None or cached.get("status") == "available":
         return {"status": "open", "seat_id": seat_id}
 
     if cached["status"] == "pending":
@@ -597,6 +599,9 @@ async def get_seat_status(seat_id: str):
         "all_requests": cached.get("all_requests", []),
         # 시계 오차 안의 동점을 추첨했으면 묶음과 seed (없으면 None).  [TIE_LOTTERY_V1]
         "lottery": cached.get("lottery"),
+        # 좌석 선점: 결제 대기 중이면 paid=false, 결제 기한  [MACRO3_V1]
+        "paid": cached.get("paid"),
+        "hold_until": cached.get("hold_until"),
     }
 
 

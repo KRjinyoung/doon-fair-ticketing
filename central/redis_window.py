@@ -104,17 +104,31 @@ if #top == 0 then
 end
 local total = tonumber(redis.call('GET', KEYS[3]) or '0')
 if total < #top then total = #top end
--- 시계 최대 오차 안의 동점은 추첨 (central_server.pick_winner 와 같은 식).  [TIE_LOTTERY_V1]
--- 가장 빠른 요청과 [보정 시각 ± clock_error_ms] 구간이 겹치는 요청을 묶고,
+-- 시계 최대 오차 안의 동점은 추첨 (central_server.pick_winner 와 같은 식).  [TIE_LOTTERY_V2]
+-- ① 같은 계정(account_key)은 가장 빠른 1건만 후보  ② 실제로 1등이었을 수 있는 요청만:
+--    t_i - e_i <= min_j(t_j + e_j)
 -- seed = sha1(좌석|정렬한 요청ID들), 승자 = 정렬된 묶음[(seed 앞 8자리 % 묶음 크기) + 1]
 local function err(e) return tonumber(e.clock_error_ms) or 0 end
-local first = cjson.decode(top[1])
-local limit = first.corrected_epoch_ms + err(first)
-local grp = {}
+local cand, seen = {}, {}
 for i = 1, #top do
-  local e = (i == 1) and first or cjson.decode(top[i])
-  if e.corrected_epoch_ms - err(e) <= limit then
-    grp[#grp + 1] = {id = tostring(e.request_id), i = i}
+  local e = cjson.decode(top[i])
+  local a = e.account_key
+  if a == cjson.null or a == '' then a = nil end
+  if not (a and seen[a]) then
+    if a then seen[a] = true end
+    cand[#cand + 1] = {e = e, i = i}
+  end
+end
+local upper = nil
+for k = 1, #cand do
+  local u = cand[k].e.corrected_epoch_ms + err(cand[k].e)
+  if upper == nil or u < upper then upper = u end
+end
+local grp = {}
+for k = 1, #cand do
+  local e = cand[k].e
+  if e.corrected_epoch_ms - err(e) <= upper then
+    grp[#grp + 1] = {id = tostring(e.request_id), i = cand[k].i}
   end
 end
 local w = 1

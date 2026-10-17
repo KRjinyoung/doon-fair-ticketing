@@ -706,6 +706,12 @@ async def publish_seat_status(payload: dict):
         print(f"[central] seat-status 발행 실패: {e}")
 
 
+def account_key(data: dict) -> Optional[str]:
+    """추첨에서 같은 계정을 하나로 묶는 키. 결과 방송에 계정 ID 가 드러나지 않게 해시로 남긴다.  [TIE_LOTTERY_V2]"""
+    a = data.get("account_id") if data.get("identity_verified") else None
+    return hashlib.sha1(f"doon|{a}".encode()).hexdigest()[:16] if a else None
+
+
 def pick_winner(seat_id: str, ranked: list) -> tuple:
     """
     보정 시각 오름차순 목록에서 승자를 고른다. 반환: (승자, 추첨 기록 또는 None).  [TIE_LOTTERY_V1]
@@ -716,13 +722,28 @@ def pick_winner(seat_id: str, ranked: list) -> tuple:
     시계가 늘 조금 늦게 재면 그 지역이 동점에서 늘 진다 — 지역 편향이다.
     그래서 가장 빠른 요청과 구간이 겹치는 요청들을 묶어 추첨한다.
 
+    *** 추첨 후보 = 실제로 가장 먼저 도착했을 수 있는 요청만  [TIE_LOTTERY_V2] ***
+    ① 같은 계정의 요청은 가장 빠른 하나만 후보로 남긴다 (여러 번 보내 추첨 기회를 늘리지 못하게).
+    ② 요청 i 가 1등이었을 수 있는 조건: t_i - e_i <= min_j(t_j + e_j)  (t 보정 시각, e 보장 오차).
+       "가장 빠른 요청과 겹치는가"로 묶으면, 오차가 큰 요청을 거쳐 이미 다른 요청보다 확실히
+       늦은 요청까지 묶일 수 있다 (예: A 0±2.4, B 0.1±1.4, C 3.0±1.4 → C 는 B 보다 확실히 늦다).
+    가장 빠른 보정 시각의 요청은 항상 후보에 남으므로, 후보가 하나면 그대로 승자다.
+
     추첨은 누구나 다시 계산할 수 있다:
         seed = sha1("좌석|요청ID들을 정렬해 쉼표로 이은 것"),  승자 = 정렬된 묶음[int(seed 앞 8자리, 16) % 묶음 크기]
-    Redis 경로(redis_window.LUA_CLOSE)도 같은 식을 쓴다.
+    Redis 경로(redis_window.LUA_CLOSE)도 같은 식을 쓴다. 검증: central/test_lottery.py
     """
     first = ranked[0]
-    limit = first["corrected_epoch_ms"] + (first.get("clock_error_ms") or 0.0)
-    group = sorted((e for e in ranked if e["corrected_epoch_ms"] - (e.get("clock_error_ms") or 0.0) <= limit),
+    seen, cand = set(), []
+    for e in ranked:
+        a = e.get("account_key")
+        if a:
+            if a in seen:
+                continue
+            seen.add(a)
+        cand.append(e)
+    upper = min(e["corrected_epoch_ms"] + (e.get("clock_error_ms") or 0.0) for e in cand)
+    group = sorted((e for e in cand if e["corrected_epoch_ms"] - (e.get("clock_error_ms") or 0.0) <= upper),
                    key=lambda e: e["request_id"])
     if len(group) < 2:
         return first, None
@@ -740,6 +761,7 @@ def apply_seat_request(
     clock_offset_ms_measured: float = 0.0,
     pop_arrival_epoch_us: Optional[int] = None,
     clock_error_ms: float = 0.0,
+    acct_key: Optional[str] = None,
 ) -> dict:
     """
     판정 로직의 실제 본체. HTTP 핸들러(/judge)와 Kafka consumer 양쪽에서
@@ -774,6 +796,8 @@ def apply_seat_request(
         "corrected_epoch_ms": corrected_epoch_ms,
         # 보정 후에도 남는 시계 최대 오차. 동점 추첨 범위.  [TIE_LOTTERY_V1]
         "clock_error_ms": clock_error_ms,
+        # 같은 계정은 추첨 후보 1건만 (계정 ID 해시)  [TIE_LOTTERY_V2]
+        "account_key": acct_key,
     }
 
     if seat_id not in seat_windows:
@@ -870,6 +894,7 @@ async def kafka_consume_loop(consumer_idx: int = 0):
                             data.get("clock_offset_ms_measured", 0.0),
                             data.get("pop_arrival_epoch_us"),
                             data.get("clock_error_ms", 0.0),
+                            account_key(data),   # [TIE_LOTTERY_V2]
                         )
         except asyncio.CancelledError:
             await consumer.stop()
@@ -1518,6 +1543,8 @@ if _REDIS_BACKEND:
             "corrected_epoch_ms": base + off,
             # 보정 후에도 남는 시계 최대 오차. 마감 Lua 의 동점 추첨 범위.  [TIE_LOTTERY_V1]
             "clock_error_ms": data.get("clock_error_ms", 0.0),
+            # 같은 계정은 추첨 후보 1건만 (계정 ID 해시)  [TIE_LOTTERY_V2]
+            "account_key": account_key(data),
         }
 
     async def _redis_apply_batch(msgs) -> None:

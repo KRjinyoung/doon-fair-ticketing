@@ -1,6 +1,6 @@
 # 네트워크 구성도
 
-- `doon_network.png` — 보고서용 (3520×1800)
+- `doon_network.png` — 보고서용 (3520×1980, 16:9 — 그림엔 이름·핵심 낱말만, 설명은 본문에)
 - `doon_network.svg` — 원본 벡터
 - `make_svg.py` — 구성도 좌표·글자를 정하는 스크립트 (아이콘: `icons/`, mingrammer/diagrams 프로젝트의 로고)
 

@@ -226,6 +226,15 @@ def human_actor(a, idx, start_at, stop_at, seats):
         time.sleep(rng.uniform(0.1, 0.4))  # 다음 시도까지 잠깐
 
 
+def human_shot(a, token, ip, fire_at, seats):
+    """측정용 사람 단발: 결제·폴링 없이 좌석요청 1건(정상 헤더/고유 IP/고유 계정 → 전 계층 통과)."""
+    wait_until(fire_at)
+    seat = random.choice(seats)
+    st, d = browser_call(a.base, "POST", "/seat-request", token=token,
+                        body={"seat_id": seat}, xff=ip)
+    bump(f"human_shot_{st}")
+
+
 def macro1(a, idx, fire_at, seats):
     """1차: urllib, Accept-Language 없음 → abnormal_headers."""
     wait_until(fire_at)
@@ -297,13 +306,30 @@ def run(a):
             bot_tokens.append(tok)
     print(f"[run] 봇 토큰 {len(bot_tokens)}개", flush=True)
 
-    # --- 발사 스케줄 ---
-    workers = ThreadPoolExecutor(max_workers=a.human_actors + 220)
+    # --- 사람 모드 선택 ---
+    #   측정(1번): --human-requests N  → 단발 N건(결제 없음). 정확한 총량·순수 부하.
+    #   시연(2번): --human-actors M    → M명이 좌석을 채우고 결제, 반복.
+    workers = ThreadPoolExecutor(max_workers=max(a.human_actors, 400) + 220)
     futs = []
-    # 사람: 시작 시각을 fill 창에 흩뿌림
-    for i in range(1, a.human_actors + 1):
-        start_at = t0 + (fill * (i - 1) / max(1, a.human_actors)) * 0.4  # 앞 40% 구간에 걸쳐 투입
-        futs.append(workers.submit(human_actor, a, i, start_at, t0 + fill, seats))
+    if a.human_requests > 0:
+        print(f"[run] 측정 모드: 사람 단발 {a.human_requests}건 (풀 {a.human_pool}계정, 결제 없음)", flush=True)
+        htok = []
+        def hlogin(i):
+            gi = a.human_offset + i
+            tok = login(base, f"h{gi:05d}@doon.kr", f"hdev{gi:05d}", xff=rand_ip(f"h{gi}"))
+            if tok:
+                htok.append((tok, rand_ip(f"h{gi}")))
+        with ThreadPoolExecutor(max_workers=40) as ex:
+            list(ex.map(hlogin, range(1, a.human_pool + 1)))
+        print(f"[run] 사람 토큰 {len(htok)}개", flush=True)
+        for j, ft in enumerate(sched_window := [t0 + fill * j / max(1, a.human_requests) for j in range(a.human_requests)]):
+            tok, ip = htok[j % len(htok)]
+            futs.append(workers.submit(human_shot, a, tok, ip, ft, seats))
+    else:
+        # 사람 액터(시연): 시작 시각을 fill 창에 흩뿌림
+        for i in range(1, a.human_actors + 1):
+            start_at = t0 + (fill * (i - 1) / max(1, a.human_actors)) * 0.4
+            futs.append(workers.submit(human_actor, a, i, start_at, t0 + fill, seats))
     # 매크로: fill 창 전체에 단발 흩뿌림
     def sched(n):
         return [t0 + fill * j / max(1, n) for j in range(n)]
@@ -343,7 +369,9 @@ def main():
     r.add_argument("--base", required=True)
     r.add_argument("--at", default="")
     r.add_argument("--fill-seconds", type=float, default=45)
-    r.add_argument("--human-actors", type=int, default=400)
+    r.add_argument("--human-actors", type=int, default=400, help="시연 모드: 좌석 채우는 사람 수")
+    r.add_argument("--human-requests", type=int, default=0, help="측정 모드: 사람 단발 요청 총수(>0 이면 이 모드)")
+    r.add_argument("--human-pool", type=int, default=2000, help="측정 모드에서 돌려쓸 사람 계정 수")
     # 방어 깔때기: 1차에서 제일 많이, 2차 그다음, 3차 최소  (대시보드 1>2>3단계)
     r.add_argument("--m1", type=int, default=7000, help="매크로 1차(단순) — 1단계 PoP 에서 차단")
     r.add_argument("--m2", type=int, default=3500, help="매크로 2차(중간) — 2단계 중앙에서 차단")

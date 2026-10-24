@@ -14,9 +14,9 @@ body {
   font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', '맑은 고딕', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
-.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+/* 3천 석을 한 화면에 보여야 해서 608석 시절(1120px)보다 넓게 쓴다. */
+.wrap { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
 
-/* 상단: index 와 같은 정체성. 파란 띠 없이 한 문장으로. */
 .brandbar { background: #fff; border-bottom: 1px solid #eee; }
 .brandbar .wrap {
   padding: 14px 24px; display: flex; align-items: center;
@@ -35,46 +35,77 @@ body {
 
 .venue {
   flex: 1; min-width: 0; background: #fff;
-  border: 1px solid #e8e8e8; border-radius: 8px; padding: 22px 16px 26px;
+  border: 1px solid #e8e8e8; border-radius: 8px; padding: 18px 16px 22px;
+  position: relative;
 }
-.showtitle { text-align: center; font-size: 16px; font-weight: 700; color: #111; margin-bottom: 16px; letter-spacing: -0.4px; }
-.stage-wrap { display: flex; justify-content: center; margin-bottom: 20px; }
-.stage-bar {
-  background: #8b8b8b; color: #fff; font-size: 13px; font-weight: 700;
-  padding: 10px 0; width: 40%; text-align: center; border-radius: 0 0 26px 26px;
-  letter-spacing: 1px;
-}
-.floor-label { text-align: center; font-size: 12px; color: #999; margin-bottom: 8px; }
-.floor-divider { border-top: 1px solid #eee; margin: 22px 0 16px; }
+.showtitle { text-align: center; font-size: 16px; font-weight: 700; color: #111; margin-bottom: 4px; letter-spacing: -0.4px; }
+.showsub { text-align: center; font-size: 11.5px; color: #999; margin-bottom: 10px; }
 
-/* *** 구역이 절대 겹치지 않게 하는 규칙 ***
-   회전한 사각형은 화면상 차지하는 폭이 원래보다 넓어진다. 가장 넓은 구역(10열)
-   기준으로 9도 회전 시 약 10px 늘어나므로, 구역 사이 간격을 그보다 넉넉한
-   22px 로 둔다. 이전에 회전각 13도 + 간격 5px 조합에서 겹침이 발생했다. */
-.zone-row { display: flex; justify-content: center; align-items: flex-start; gap: 20px; }
-.zone-seat-block { flex-shrink: 0; }
-.zone-seat-label { font-size: 11px; font-weight: 700; text-align: center; margin-bottom: 3px; color: #444; }
-.zone-seat-grid { border: 1px solid #b0b0b0; padding: 3px; background: #fff; display: inline-block; }
-.mini-seat-row { display: flex; gap: 2px; margin-bottom: 2px; }
-.mini-seat-row:last-child { margin-bottom: 0; }
-.mini-seat {
-  width: 11px; height: 11px; border: 1px solid #ccc; background: #fff;
-  cursor: pointer; transition: background 0.12s;
+/* ---------- 3천 석 좌석배치도 ----------
+   map 은 논리 좌표(px) 그대로 그리고, 확대·축소는 transform: scale 로만 한다.
+   좌석 3천 개를 다시 그리지 않으므로 확대해도 버벅이지 않는다. */
+.map-viewport {
+  position: relative; overflow: auto; border-radius: 6px;
+  background: #fcfcfc; cursor: grab; user-select: none;
+  overscroll-behavior: contain;
 }
-.mini-seat.available:hover { background: #FFE3C9; border-color: #F5821F; }
-/* 선택됨: index 의 예매하기 버튼과 같은 주황. 두 화면이 이어져 보이게 하는 핵심. */
-.mini-seat.selected { background: #F5821F; border-color: #F5821F; }
-/* 예약중(빨강)과 판매됨(회색)은 그대로 둔다 — 부하 시연에서
+.map-viewport.dragging { cursor: grabbing; }
+.map-sizer { position: relative; }
+.map { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+
+.stage-box {
+  position: absolute; background: #8b8b8b; color: #fff; font-size: 15px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; letter-spacing: 2px;
+  border-radius: 0 0 30px 30px;
+}
+.sec-label {
+  position: absolute; transform: translate(-50%, -50%);
+  font-size: 11px; font-weight: 700; color: #555; white-space: nowrap;
+  cursor: pointer; padding: 0 2px; line-height: 1;
+}
+.sec-label:hover { color: #F5821F; }
+.floor-tag {
+  position: absolute; transform: translate(-50%, -50%);
+  font-size: 12px; font-weight: 700; color: #aaa; letter-spacing: 1px;
+}
+
+/* 좌석 하나 = 4x4 논리 px. 608석 시절처럼 흰 칸 + 회색 테두리가 "선택 가능" 표시다. */
+.mini-seat {
+  position: absolute; width: 4px; height: 4px; border-radius: 1px;
+  background: #fff; border: 0.6px solid #c4c4c4; cursor: pointer;
+}
+.mini-seat.available:hover { background: #FFE3C9; border-color: #F5821F; z-index: 3; }
+/* 예약중(빨강)과 판매됨(회색) — 좌석이 작아서 판매됨 회색은 608석 시절보다 진하게 했다. 부하 시연에서
    "빨갛게 물들었다가 회색으로 굳는" 장면이 이 두 색으로 만들어진다. */
 .mini-seat.pending { background: #d64027; border-color: #d64027; cursor: not-allowed; }
-.mini-seat.unavailable { background: #cfcfcf; border-color: #cfcfcf; cursor: not-allowed; }
+.mini-seat.unavailable { background: #9e9e9e; border-color: #9e9e9e; cursor: not-allowed; }
+/* 선택됨: 좌석이 작아서 색만으로는 안 보이므로 주황 테두리 고리를 크게 두른다. */
+.mini-seat.selected {
+  background: #F5821F; border-color: #F5821F; z-index: 4;
+  box-shadow: 0 0 0 1.5px #fff, 0 0 0 3px #F5821F;
+}
 
-.legend { display: flex; justify-content: center; gap: 18px; font-size: 12px; color: #555; margin-top: 24px; flex-wrap: wrap; }
-.legend .box { display: inline-block; width: 11px; height: 11px; vertical-align: -1px; margin-right: 5px; }
+.zoombar {
+  position: absolute; top: 14px; right: 16px; z-index: 10;
+  display: flex; align-items: center; gap: 4px;
+  background: #fff; border: 1px solid #e3e3e3; border-radius: 6px; padding: 3px;
+}
+.zoombar button {
+  border: 0; background: #f4f4f4; color: #333; font-size: 13px; font-weight: 700;
+  width: 26px; height: 24px; border-radius: 4px; cursor: pointer; font-family: inherit;
+}
+.zoombar button.wide { width: auto; padding: 0 8px; font-size: 11.5px; }
+.zoombar button:hover { background: #FFE3C9; color: #B3560A; }
+.zoombar .zv { font-size: 11px; color: #777; width: 40px; text-align: center; }
+.maphint { text-align: center; font-size: 11px; color: #aaa; margin-top: 8px; }
+
+.legend { display: flex; justify-content: center; gap: 16px; font-size: 12px; color: #555; margin-top: 12px; flex-wrap: wrap; }
+.legend .box { display: inline-block; width: 11px; height: 11px; vertical-align: -1px; margin-right: 5px; border-radius: 2px; }
 .legend .box.available { border: 1px solid #bbb; background: #fff; }
 .legend .box.selected { background: #F5821F; }
 .legend .box.pending { background: #d64027; }
-.legend .box.unavailable { background: #cfcfcf; }
+.legend .box.unavailable { background: #9e9e9e; }
+.legend .sep { width: 1px; background: #e5e5e5; }
 
 .side { width: 210px; flex-shrink: 0; }
 .card { background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
@@ -109,7 +140,6 @@ body {
 .book:hover { background: #DE7115; }
 .book:disabled { background: #ccc; cursor: default; }
 
-/* 판정 결과: 사이드바가 좁으므로 긴 UUID 가 넘치지 않게 강제로 줄바꿈한다. */
 .result {
   background: #fff; border: 1px solid #e8e8e8; border-radius: 8px;
   padding: 11px; margin-top: 10px; font-size: 11px; color: #444;
@@ -122,10 +152,6 @@ body {
   .side { width: 100%; }
 }
 
-/* 접속 지역 패널: 사용자가 지금 어느 PoP에 붙어 있는지 보여준다.
-   /clock-offset 이 pop_id 와 시계 오차를 함께 주므로 새 API 가 필요 없다.
-   판교와 대전 브라우저를 나란히 열면 이 패널만 다르게 보이는 것이
-   "지역 분산이 실재한다"는 가장 직관적인 증거가 된다. */
 .leftpanel { width: 180px; flex-shrink: 0; }
 .pop-name { font-size: 19px; font-weight: 700; color: #F5821F; letter-spacing: -0.4px; margin-bottom: 14px; }
 .pop-cap { font-size: 11px; color: #888; margin-bottom: 2px; }
@@ -191,18 +217,24 @@ body {
           </div>
         </div>
       </div>
+
     <div class="venue">
       <div class="showtitle" id="showTitle">임영웅 : IM HERO TOUR 2026</div>
+      <div class="showsub">실내 아레나 배치 · 플로어 624 · 1층 896 · 2층 1,480 · 총 3,000석</div>
 
-      <div class="stage-wrap"><div class="stage-bar">STAGE</div></div>
+      <div class="zoombar">
+        <button type="button" id="zoomOut" title="축소">−</button>
+        <span class="zv" id="zoomVal">100%</span>
+        <button type="button" id="zoomIn" title="확대">+</button>
+        <button type="button" class="wide" id="zoomFit" title="전체 보기">전체</button>
+      </div>
 
-      <div class="floor-label">1F</div>
-      <div class="zone-row" id="zoneRow1F"></div>
-
-      <div class="floor-divider"></div>
-
-      <div class="floor-label">2F</div>
-      <div class="zone-row" id="zoneRow2F"></div>
+      <div class="map-viewport" id="mapViewport">
+        <div class="map-sizer" id="mapSizer">
+          <div class="map" id="map"></div>
+        </div>
+      </div>
+      <div class="maphint">구역 번호를 누르면 확대됩니다 · 드래그로 이동 · Ctrl(⌘)+휠로 확대/축소</div>
 
       <div class="legend">
         <span><span class="box available"></span>선택 가능</span>
@@ -226,7 +258,7 @@ body {
       </div>
 
       <div class="card">
-        <div class="slot on"><span id="slot1">1회 19:00</span><span id="slotSeats">608석</span></div>
+        <div class="slot on"><span id="slot1">1회 19:00</span><span id="slotSeats">3,000석</span></div>
         <div class="slot off"><span>2회 21:00</span><span>매진</span></div>
       </div>
 
@@ -242,43 +274,145 @@ body {
 </div>
 
 <script>
-// 구역별 설정: 열 개수, 회전 각도(스테이지를 향하도록), 층
-// *** 좌석 ID 규칙(A-1-1 ~ J-8-10, 총 608석)은 절대 바꾸지 않는다 ***
-// 부하 테스트 스크립트와 중앙서버 DB가 이 ID를 그대로 쓰기 때문에,
-// 여기서 열 수나 행 수를 바꾸면 시연 전체가 어긋난다.
-// 회전각은 13도에서 9도로 낮췄다 — 구역이 서로 겹치는 것을 막기 위해서다.
-const ZONES = {
-  A: { cols: 6,  rot: 9,  floor: '1F' },
-  B: { cols: 8,  rot: 4,  floor: '1F' },
-  C: { cols: 10, rot: 0,  floor: '1F' },
-  D: { cols: 8,  rot: -4, floor: '1F' },
-  E: { cols: 6,  rot: -9, floor: '1F' },
-  F: { cols: 6,  rot: 9,  floor: '2F' },
-  G: { cols: 8,  rot: 4,  floor: '2F' },
-  H: { cols: 10, rot: 0,  floor: '2F' },
-  I: { cols: 8,  rot: -4, floor: '2F' },
-  J: { cols: 6,  rot: -9, floor: '2F' },
-};
-const ROWS = 8;
-const marginTopByOrder = [-6, 4, 8, 4, -6];
+// DOON 3천 석 실내 아레나형 좌석 배치 생성기
+// 브라우저(seat.html 에 그대로 붙여 넣음)와 node 테스트에서 같은 코드를 쓴다.
+//
+// 모양: 무대가 위쪽 끝에 있고, 플로어를 1층·2층 스탠드가 ㄷ자(양옆은 직선, 뒤쪽은 반원)로 감싼다.
+//
+// 구성 (합계 정확히 3,000석)
+//   플로어  A1~A3, B1~B3 :  6구역 x 8열 x 13번          =   624석
+//   1층     101~110      : 양옆 6구역(8열 x 8번) + 뒤 4구역(8열 x 16번)   =   896석
+//   2층     201~211      : 양옆 6구역(10열 x 8번) + 뒤 5구역(10열 x 20번) = 1,480석
+//
+// 좌석 ID 규칙: "구역-열-번"  예) A2-3-7, 104-1-1, 206-10-20
+function buildVenue() {
+  const P = 5;          // 좌석 간격(논리 px)
+  const AISLE = 12;     // 구역 사이 통로 폭(px)
+  const GAP = 28;       // 1층과 2층 사이 간격(구역 번호가 들어감)
+  const MARGIN = 40;
+
+  const FLOOR = { rowsOfBlocks: 2, colsOfBlocks: 3, rows: 8, cols: 13, gapX: 14, gapY: 20,
+                  names: [['A1', 'A2', 'A3'], ['B1', 'B2', 'B3']] };
+  const BOWL1 = { floor: '1층', first: 101, rows: 8, side: { n: 3, cols: 8 }, curve: { n: 4, cols: 16 } };
+  const BOWL2 = { floor: '2층', first: 201, rows: 10, side: { n: 3, cols: 8 }, curve: { n: 5, cols: 20 } };
+
+  const bw = FLOOR.cols * P, bh = FLOOR.rows * P;
+  const fw = FLOOR.colsOfBlocks * bw + (FLOOR.colsOfBlocks - 1) * FLOOR.gapX;
+  const fh = FLOOR.rowsOfBlocks * bh + (FLOOR.rowsOfBlocks - 1) * FLOOR.gapY;
+
+  const R1 = Math.round(fw / 2 + 26);                 // 1층 안쪽 반폭
+  const R1out = R1 + BOWL1.rows * P;
+  const R2 = R1out + GAP;                             // 2층 안쪽 반폭
+  const R2out = R2 + BOWL2.rows * P;
+  const sideLen = b => b.side.n * b.side.cols * P + (b.side.n - 1) * AISLE;
+  const L1 = sideLen(BOWL1), L2 = sideLen(BOWL2);
+
+  const cx = R2out + MARGIN;
+  const yb = L2 + MARGIN + 60;                        // 직선 구간이 끝나고 반원이 시작되는 높이
+  const W = Math.ceil(2 * cx);
+  const H = Math.ceil(yb + R2out + MARGIN);
+
+  const seats = [], labels = [], sections = [], tags = [];
+
+  // --- 플로어: 직선 구간 안쪽, 반원 쪽으로 붙인다 ---
+  const fLeft = cx - fw / 2;
+  const fTop = yb - L1 + 34;
+  FLOOR.names.forEach((rowNames, br) => {
+    rowNames.forEach((sec, bc) => {
+      const x0 = fLeft + bc * (bw + FLOOR.gapX), y0 = fTop + br * (bh + FLOOR.gapY);
+      const tier = br === 0 ? 'vip' : 'r';
+      sections.push({ id: sec, floor: 'FLOOR', tier, rows: FLOOR.rows, cols: FLOOR.cols });
+      labels.push({ text: sec, x: x0 + bw / 2, y: y0 - 10, floor: 'FLOOR' });
+      for (let r = 1; r <= FLOOR.rows; r++)
+        for (let c = 1; c <= FLOOR.cols; c++)
+          seats.push({ id: sec + '-' + r + '-' + c, x: x0 + (c - 0.5) * P, y: y0 + (r - 0.5) * P, tier });
+    });
+  });
+  tags.push({ text: 'FLOOR', x: cx, y: fTop + fh + 24 });
+
+  // --- 스탠드: 왼쪽 직선(위→아래) → 뒤쪽 반원(왼→오) → 오른쪽 직선(아래→위) 순으로 번호를 매긴다 ---
+  function buildBowl(b, Rin, labelR, tier) {
+    let no = b.first;
+    const L = sideLen(b), top = yb - L;
+    const add = (sec, rows, cols, pos) => {
+      sections.push({ id: sec, floor: b.floor, tier, rows, cols });
+      for (let r = 1; r <= rows; r++)
+        for (let c = 1; c <= cols; c++) {
+          const p = pos(r, c);
+          seats.push({ id: sec + '-' + r + '-' + c, x: p[0], y: p[1], tier });
+        }
+    };
+    // 왼쪽 직선
+    for (let k = 0; k < b.side.n; k++) {
+      const sec = String(no++), y0 = top + k * (b.side.cols * P + AISLE);
+      add(sec, b.rows, b.side.cols, (r, c) => [cx - (Rin + (r - 0.5) * P), y0 + (c - 0.5) * P]);
+      labels.push({ text: sec, x: cx - labelR, y: y0 + b.side.cols * P / 2, floor: b.floor });
+    }
+    // 뒤쪽 반원 (theta: pi=왼쪽, pi/2=아래, 0=오른쪽)
+    const aisleAng = AISLE / Rin;
+    const secAng = (Math.PI - (b.curve.n + 1) * aisleAng) / b.curve.n;
+    for (let j = 0; j < b.curve.n; j++) {
+      const sec = String(no++), start = Math.PI - aisleAng - j * (secAng + aisleAng);
+      add(sec, b.rows, b.curve.cols, (r, c) => {
+        const rr = Rin + (r - 0.5) * P, th = start - (c - 0.5) * secAng / b.curve.cols;
+        return [cx + rr * Math.cos(th), yb + rr * Math.sin(th)];
+      });
+      const mid = start - secAng / 2;
+      labels.push({ text: sec, x: cx + labelR * Math.cos(mid), y: yb + labelR * Math.sin(mid), floor: b.floor });
+    }
+    // 오른쪽 직선 (아래→위)
+    for (let k = 0; k < b.side.n; k++) {
+      const sec = String(no++), y1 = yb - k * (b.side.cols * P + AISLE);
+      add(sec, b.rows, b.side.cols, (r, c) => [cx + (Rin + (r - 0.5) * P), y1 - (c - 0.5) * P]);
+      labels.push({ text: sec, x: cx + labelR, y: y1 - b.side.cols * P / 2, floor: b.floor });
+    }
+  }
+  buildBowl(BOWL1, R1, R1out + GAP / 2, 's');
+  buildBowl(BOWL2, R2, R2out + 16, 'a');
+  tags.push({ text: '1층', x: cx, y: yb + R1 - 12 });
+  tags.push({ text: '2층', x: cx, y: yb + R2 - 14 });
+
+  const sw = Math.round(fw * 0.8);
+  const stage = { x: cx - sw / 2, y: yb - L2 - 44, w: sw, h: 42 };
+
+  return { W, H, P, seats, labels, sections, stage, tags,
+           meta: { cx, yb, R1, R1out, R2, R2out, fLeft, fTop, fw, fh } };
+}
+
+if (typeof module !== 'undefined') module.exports = { buildVenue };
+
+</script>
+<script>
+// =====================================================================
+// 3천 석 좌석배치도
+// 좌석 ID 는 "구역-열-번" (예: A2-3-7, 104-1-1, 206-10-20).
+// 608석 시절(A-1-1)과 형식이 같아서 PoP·중앙·Kafka 코드는 손대지 않는다.
+// 좌석 DOM 은 예전과 같은 .mini-seat + data-seat-id 를 쓴다
+// (브라우저 자동화 봇·테스트 스크립트가 이 선택자를 그대로 쓸 수 있게).
+// =====================================================================
+const VENUE = buildVenue();
+const TOTAL_SEATS = VENUE.seats.length; // 3000
 
 const reserveBtn = document.getElementById('reserveBtn');
 const reserveResult = document.getElementById('reserveResult');
 const pickTxt = document.getElementById('pickTxt');
 const remainTxt = document.getElementById('remainTxt');
 const slotSeats = document.getElementById('slotSeats');
+const viewport = document.getElementById('mapViewport');
+const sizer = document.getElementById('mapSizer');
+const mapEl = document.getElementById('map');
 
 let selectedSeatId = null;
 let myPendingSeatId = null;
 let pollTimer = null;
 
+const seatEls = new Map();      // id -> div
+let lastStatus = new Map();     // id -> 서버가 준 상태 문자열 (overview 에 있는 좌석만)
+
 function toKST(isoUtcString) {
   return new Date(isoUtcString).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false });
 }
-
-function seatId(zoneLetter, row, col) {
-  return zoneLetter + '-' + row + '-' + col;
-}
+function fmt(n) { return Number(n).toLocaleString('ko-KR'); }
 
 // --- 공연 정보: index 와 같은 규칙으로 오늘 날짜를 쓴다 ---
 (function () {
@@ -288,8 +422,6 @@ function seatId(zoneLetter, row, col) {
   document.getElementById('showTitle').textContent =
     '임영웅 : IM HERO TOUR 2026  ·  ' + p(now.getMonth() + 1) + '.' + p(now.getDate()) +
     '(' + DOW[now.getDay()] + ') 19:00';
-
-  // 달력: 이번 달을 그리고 오늘은 채움, 내일은 테두리로 표시한다.
   const y = now.getFullYear(), m = now.getMonth();
   document.getElementById('calYm').textContent = y + '. ' + p(m + 1);
   const first = new Date(y, m, 1).getDay();
@@ -305,63 +437,94 @@ function seatId(zoneLetter, row, col) {
   }
 })();
 
-// --- 좌석배치도 렌더링 ---
+// --- 좌석배치도 렌더링 (한 번만) ---
 function renderVenue() {
-  const row1F = document.getElementById('zoneRow1F');
-  const row2F = document.getElementById('zoneRow2F');
-  ['A', 'B', 'C', 'D', 'E'].forEach((letter, i) => buildZoneSeatBlock(row1F, letter, marginTopByOrder[i]));
-  ['F', 'G', 'H', 'I', 'J'].forEach((letter, i) => buildZoneSeatBlock(row2F, letter, marginTopByOrder[i]));
-}
+  mapEl.style.width = VENUE.W + 'px';
+  mapEl.style.height = VENUE.H + 'px';
+  const frag = document.createDocumentFragment();
 
-function buildZoneSeatBlock(container, letter, marginTop) {
-  const zd = ZONES[letter];
+  const st = VENUE.stage;
+  const stage = document.createElement('div');
+  stage.className = 'stage-box';
+  stage.style.cssText = 'left:' + st.x + 'px;top:' + st.y + 'px;width:' + st.w + 'px;height:' + st.h + 'px;';
+  stage.textContent = 'STAGE';
+  frag.appendChild(stage);
 
-  const wrap = document.createElement('div');
-  wrap.className = 'zone-seat-block';
-  wrap.style.marginTop = marginTop + 'px';
-  if (zd.rot !== 0) wrap.style.transform = 'rotate(' + zd.rot + 'deg)';
+  VENUE.tags.map(t => [t.text, t.x, t.y]).forEach(([t, x, y]) => {
+    const d = document.createElement('div');
+    d.className = 'floor-tag'; d.textContent = t;
+    d.style.left = x + 'px'; d.style.top = y + 'px';
+    frag.appendChild(d);
+  });
 
-  const label = document.createElement('div');
-  label.className = 'zone-seat-label';
-  label.textContent = letter;
-  wrap.appendChild(label);
-
-  const grid = document.createElement('div');
-  grid.className = 'zone-seat-grid';
-
-  for (let r = 1; r <= ROWS; r++) {
-    const rowDiv = document.createElement('div');
-    rowDiv.className = 'mini-seat-row';
-    for (let c = 1; c <= zd.cols; c++) {
-      const id = seatId(letter, r, c);
-      const seatDiv = document.createElement('div');
-      seatDiv.className = 'mini-seat available';
-      seatDiv.dataset.seatId = id;
-      seatDiv.title = id;
-      seatDiv.addEventListener('click', () => onSeatClick(seatDiv, id));
-      rowDiv.appendChild(seatDiv);
-    }
-    grid.appendChild(rowDiv);
+  for (const l of VENUE.labels) {
+    const d = document.createElement('div');
+    d.className = 'sec-label';
+    d.textContent = l.text;
+    d.dataset.x = l.x; d.dataset.y = l.y;
+    d.style.left = l.x + 'px'; d.style.top = l.y + 'px';
+    frag.appendChild(d);
   }
 
-  wrap.appendChild(grid);
-  container.appendChild(wrap);
+  for (const s of VENUE.seats) {
+    const d = document.createElement('div');
+    d.className = 'mini-seat available t-' + s.tier;
+    d.dataset.seatId = s.id;
+    d.title = s.id;
+    d.style.left = (s.x - 2).toFixed(1) + 'px';
+    d.style.top = (s.y - 2).toFixed(1) + 'px';
+    seatEls.set(s.id, d);
+    frag.appendChild(d);
+  }
+  mapEl.appendChild(frag);
+}
+
+// 서버 상태 → 화면 클래스. 608석 시절과 같은 규칙:
+// confirmed = 판매됨(회색), pending = 예약중(빨강), 그 외 = 선택 가능.
+function stateClass(status) {
+  if (status === 'confirmed') return 'unavailable';
+  if (status === 'pending') return 'pending';
+  return 'available';
+}
+function paintSeat(id) {
+  if (id === selectedSeatId || id === myPendingSeatId) return;
+  const el = seatEls.get(id);
+  if (!el) return;
+  const want = stateClass(lastStatus.get(id));
+  if (!el.classList.contains(want)) {
+    el.classList.remove('available', 'pending', 'unavailable', 'selected');
+    el.classList.add(want);
+  }
+}
+
+// --- 좌석 클릭: 3천 개에 리스너를 달지 않고 지도 하나에서 받는다 ---
+let suppressClick = false;
+mapEl.addEventListener('click', (e) => {
+  if (suppressClick) { suppressClick = false; return; }
+  const label = e.target.closest('.sec-label');
+  if (label) { zoomToPoint(Number(label.dataset.x), Number(label.dataset.y), 3); return; }
+  const seat = e.target.closest('.mini-seat');
+  if (seat) onSeatClick(seat, seat.dataset.seatId);
+});
+
+function clearSelection() {
+  const prev = selectedSeatId;
+  selectedSeatId = null;
+  if (prev) {
+    const el = seatEls.get(prev);
+    if (el) el.classList.remove('selected');
+    paintSeat(prev);
+  }
 }
 
 function onSeatClick(seatDiv, id) {
   if (seatDiv.classList.contains('unavailable') || seatDiv.classList.contains('pending')) return;
+  if (myPendingSeatId) return; // 판정 대기 중에는 다른 좌석을 고르지 않는다
 
-  const wasSelected = seatDiv.classList.contains('selected');
-
-  document.querySelectorAll('.mini-seat.selected').forEach(s => {
-    s.classList.remove('selected');
-    s.classList.add('available');
-  });
+  const wasSelected = (selectedSeatId === id);
+  clearSelection();
 
   if (wasSelected) {
-    seatDiv.classList.remove('selected');
-    seatDiv.classList.add('available');
-    selectedSeatId = null;
     pickTxt.textContent = '-';
     reserveBtn.disabled = true;
     reserveBtn.textContent = '좌석을 선택하세요';
@@ -373,44 +536,109 @@ function onSeatClick(seatDiv, id) {
     reserveBtn.disabled = false;
     reserveBtn.textContent = id + ' 예약하기';
   }
-
   reserveResult.style.display = 'none';
 }
 
-// --- 실시간 좌석 상태 반영 ---
+// --- 실시간 좌석 상태 반영: 바뀐 좌석만 다시 칠한다 ---
 async function refreshSeatOverview() {
   try {
     const res = await fetch('/seats-overview');
     const overviewData = await res.json();
-
-    document.querySelectorAll('.mini-seat[data-seat-id]').forEach(seatDiv => {
-      const id = seatDiv.dataset.seatId;
-      if (id === selectedSeatId || id === myPendingSeatId) return;
-
-      const status = overviewData[id];
-      seatDiv.classList.remove('available', 'pending', 'unavailable');
-      if (status === 'confirmed') seatDiv.classList.add('unavailable');
-      else if (status === 'pending') seatDiv.classList.add('pending');
-      else seatDiv.classList.add('available');
-    });
+    const next = new Map(Object.entries(overviewData));
+    const prev = lastStatus;
+    lastStatus = next;
+    for (const [id, st] of next) if (prev.get(id) !== st) paintSeat(id);
+    for (const id of prev.keys()) if (!next.has(id)) paintSeat(id);
   } catch (err) {
     // 조회 실패는 조용히 무시 (다음 주기에 다시 시도)
   }
 }
 
-// 잔여석 요약. PoP 에 1초 TTL 캐시가 있어 사용자가 많아도 중앙 왕복은 초당 1회로 묶인다.
 async function refreshSeatCount() {
   try {
     const res = await fetch('/seat-count');
     const d = await res.json();
     if (d.remaining === null || d.remaining === undefined) return;
-    remainTxt.textContent = d.remaining + ' / ' + d.total;
-    slotSeats.textContent = d.remaining + '석';
+    remainTxt.textContent = fmt(d.remaining) + ' / ' + fmt(d.total);
+    slotSeats.textContent = fmt(d.remaining) + '석';
   } catch (err) {}
 }
 
-setInterval(refreshSeatOverview, 1500);
-setInterval(refreshSeatCount, 3000);
+// --- 확대/축소/이동 ---
+let scale = 1, fitScale = 1, fitMode = true;
+const MAX_SCALE = 6;
+const zoomVal = document.getElementById('zoomVal');
+
+// 전체 보기 배율: 가로 폭과 화면 높이 중 더 빡빡한 쪽에 맞춘다.
+// 시연 영상에서 스크롤 없이 경기장 전체가 한 화면에 들어오게 하기 위해서다.
+let padX = 0;
+function computeFit() {
+  const w = viewport.clientWidth || 800;
+  const maxH = Math.max(420, window.innerHeight - 250);
+  fitScale = Math.min(w / VENUE.W, maxH / VENUE.H);
+  viewport.style.height = Math.round(VENUE.H * fitScale) + 'px';
+}
+function setScale(s, ax, ay) {
+  // ax, ay: 뷰포트 안의 기준점(px). 확대 전후에 이 점 아래의 지도 좌표가 그대로 있게 한다.
+  s = Math.max(fitScale, Math.min(MAX_SCALE, s));
+  if (ax === undefined) { ax = viewport.clientWidth / 2; ay = viewport.clientHeight / 2; }
+  const mx = (viewport.scrollLeft + ax - padX) / scale;
+  const my = (viewport.scrollTop + ay) / scale;
+  scale = s;
+  fitMode = Math.abs(scale - fitScale) < 1e-6;
+  // 지도가 뷰포트보다 좁으면 가운데 정렬
+  padX = Math.max(0, Math.floor((viewport.clientWidth - VENUE.W * scale) / 2));
+  sizer.style.marginLeft = padX + 'px';
+  sizer.style.width = Math.round(VENUE.W * scale) + 'px';
+  sizer.style.height = Math.round(VENUE.H * scale) + 'px';
+  mapEl.style.transform = 'scale(' + scale + ')';
+  viewport.scrollLeft = mx * scale + padX - ax;
+  viewport.scrollTop = my * scale - ay;
+  zoomVal.textContent = Math.round(scale / fitScale * 100) + '%';
+}
+function zoomToPoint(x, y, factor) {
+  const s = Math.max(fitScale, Math.min(MAX_SCALE, fitScale * factor));
+  setScale(s);
+  viewport.scrollLeft = x * scale + padX - viewport.clientWidth / 2;
+  viewport.scrollTop = y * scale - viewport.clientHeight / 2;
+}
+document.getElementById('zoomIn').addEventListener('click', () => setScale(scale * 1.5));
+document.getElementById('zoomOut').addEventListener('click', () => setScale(scale / 1.5));
+document.getElementById('zoomFit').addEventListener('click', () => setScale(fitScale));
+
+viewport.addEventListener('wheel', (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return; // 일반 휠은 페이지 스크롤
+  e.preventDefault();
+  const r = viewport.getBoundingClientRect();
+  setScale(scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX - r.left, e.clientY - r.top);
+}, { passive: false });
+
+// 드래그 이동. 4px 넘게 움직이면 클릭이 아니라 이동으로 본다.
+let drag = null;
+viewport.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  drag = { x: e.clientX, y: e.clientY, sl: viewport.scrollLeft, st: viewport.scrollTop, moved: false };
+});
+window.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) > 4) { drag.moved = true; viewport.classList.add('dragging'); }
+  if (drag.moved) { viewport.scrollLeft = drag.sl - dx; viewport.scrollTop = drag.st - dy; }
+});
+window.addEventListener('pointerup', () => {
+  if (drag && drag.moved) suppressClick = true;
+  drag = null;
+  viewport.classList.remove('dragging');
+  setTimeout(() => { suppressClick = false; }, 0);
+});
+window.addEventListener('resize', () => {
+  const wasFit = fitMode;
+  computeFit();
+  setScale(wasFit ? fitScale : scale);
+});
+
+setInterval(refreshSeatOverview, 500);
+setInterval(refreshSeatCount, 1500);
 
 // --- 예약하기: 이 순간 PoP 가 타임스탬프를 찍고 central 로 전달한다 ---
 reserveBtn.addEventListener('click', async () => {
@@ -456,7 +684,7 @@ reserveBtn.addEventListener('click', async () => {
 
 async function pollForResult(id, myRequestId) {
   try {
-    const res = await fetch('/seat-status/' + id);
+    const res = await fetch('/seat-status/' + encodeURIComponent(id));
     const data = await res.json();
 
     if (data.status === 'pending') {
@@ -474,18 +702,16 @@ async function pollForResult(id, myRequestId) {
           '<div class="status-text">결제 페이지로 이동합니다...</div>';
         // 수집 회차(?every=)에서는 결제로 넘어가지 않고 다음 회차를 기다린다  [ROUNDS_V1]
         if (!new URLSearchParams(location.search).get('every')) setTimeout(() => {
-          window.location.href = '/payment.html?seat_id=' + id + '&request_id=' + myRequestId;
+          window.location.href = '/payment.html?seat_id=' + encodeURIComponent(id) + '&request_id=' + myRequestId;
         }, 1200);
       } else {
         reserveResult.innerHTML =
           '<div style="color:#a12b2b;font-weight:700;">이 좌석은 이미 예약되었습니다.</div>' +
           '<div class="status-text">다른 좌석을 선택해주세요.</div>';
-        const seatDiv = document.querySelector('.mini-seat[data-seat-id="' + id + '"]');
-        if (seatDiv) {
-          seatDiv.classList.remove('selected');
-          seatDiv.classList.add('unavailable');
-        }
         selectedSeatId = null;
+        lastStatus.set(id, 'confirmed');
+        const el = seatEls.get(id);
+        if (el) { el.classList.remove('selected', 'available', 'pending'); el.classList.add('unavailable'); }
         pickTxt.textContent = '-';
         reserveBtn.disabled = true;
         reserveBtn.textContent = '좌석을 선택하세요';
@@ -503,11 +729,11 @@ async function pollForResult(id, myRequestId) {
 }
 
 renderVenue();
+computeFit();
+setScale(fitScale);
 refreshSeatOverview();
 refreshSeatCount();
 
-// 접속 지역 표시: /clock-offset 한 번이면 pop_id 와 시계 오차가 같이 온다.
-// 5초마다 갱신해서 시계 오차가 살아 움직이는 값이라는 걸 보여준다.
 async function refreshPopInfo() {
   try {
     const res = await fetch('/clock-offset');
@@ -526,9 +752,7 @@ async function refreshPopInfo() {
 }
 refreshPopInfo();
 setInterval(refreshPopInfo, 5000);
-
 </script>
-
 <!-- 수집 회차용 오픈 카운트다운  [ROUNDS_V1]
      seat.html?every=2 로 열면 2분마다 정각(기기 시계 기준)에 '오픈'한다.
      오픈 전에는 좌석만 고를 수 있고 예약하기 버튼은 잠긴다. 오픈 후 30초 동안 열린다.

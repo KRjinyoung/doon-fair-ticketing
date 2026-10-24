@@ -298,10 +298,13 @@ def run(a):
     print(f"[run] 농장 토큰 {len(farm_tokens)}개", flush=True)
 
     # --- 3차 블랙리스트 봇 토큰 ---
-    print("[run] 3차 봇 로그인(블랙리스트)…", flush=True)
+    # 3차: 블랙리스트에 오른 계정(bot01~25)을 "각자 다른 기기"로 로그인한다.
+    #   기기를 공유하면 기본 기기 속도제한(1차 blocked_device)에 먼저 걸려 AI 명단(3차)을 못 탄다.
+    #   계정이 블랙리스트이므로 기기를 바꿔도 PoP 의 blacklist:account 로 잡힌다(=3단계).
+    print("[run] 3차 봇 로그인(블랙리스트 계정, 기기 분리)…", flush=True)
     bot_tokens = []
-    for i in range(1, 31):
-        tok = login(base, f"bot{i:02d}@doon.kr", SHARED_BOT_FP, xff=rand_ip(f"bot{i}"))
+    for i in range(1, 26):
+        tok = login(base, f"bot{i:02d}@doon.kr", f"botdev{i:02d}", xff=rand_ip(f"bot{i}"))
         if tok:
             bot_tokens.append(tok)
     print(f"[run] 봇 토큰 {len(bot_tokens)}개", flush=True)

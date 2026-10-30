@@ -82,7 +82,7 @@ body { margin:0; background:#fafafa; color:#222;
 
     <div class="card">
       <div class="ct">예매 정보</div>
-      <div class="row"><div class="k">공연</div><div class="v">임영웅 : IM HERO TOUR 2026</div></div>
+      <div class="row"><div class="k">공연</div><div class="v">DOON LIVE TOUR 2026</div></div>
       <div class="row"><div class="k">일시</div><div class="v" id="showDate">-</div></div>
       <div class="row"><div class="k">장소</div><div class="v">인천 송도컨벤시아</div></div>
       <div class="row"><div class="k">좌석</div><div class="v pick" id="seatTxt">-</div></div>
@@ -216,7 +216,7 @@ payBtn.addEventListener('click', function () {
       }
       // 예매번호: 좌석과 시각으로 만든 표시용 값.
       var no = 'DOON-' + Date.now().toString(36).toUpperCase().slice(-6) + '-' + seat;
-      document.getElementById('doneSeat').textContent = '임영웅 : IM HERO TOUR 2026  ·  ' + seat;
+      document.getElementById('doneSeat').textContent = 'DOON LIVE TOUR 2026  ·  ' + seat;
       document.getElementById('bookNo').textContent = no;
       document.getElementById('payView').style.display = 'none';
       document.getElementById('doneView').style.display = 'block';

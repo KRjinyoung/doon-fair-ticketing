@@ -118,7 +118,7 @@
       },
       "targets": [
         {
-          "expr": "608 - sum(central_confirmed_seats_db)",
+          "expr": "3000 - sum(central_confirmed_seats_db)",
           "refId": "A",
           "datasource": {
             "type": "prometheus",

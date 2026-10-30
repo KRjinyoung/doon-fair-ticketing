@@ -120,7 +120,7 @@ DB_COMMAND_TIMEOUT = float(os.environ.get("DB_COMMAND_TIMEOUT", "10"))
 
 # 전체 좌석 수 (seat.html의 ZONES 설정과 반드시 일치해야 함: 8행 x (6+8+10+8+6)x2 = 608석).
 # *** 주의 (기술 부채): 지금은 프론트(seat.html ZONES)와 여기 숫자를 사람이 직접 맞춰야 한다.
-TOTAL_SEATS = 608
+TOTAL_SEATS = 3000
 
 db_pool: asyncpg.Pool | None = None
 kafka_producer: AIOKafkaProducer | None = None

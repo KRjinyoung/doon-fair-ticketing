@@ -226,6 +226,58 @@ def human_actor(a, idx, start_at, stop_at, seats):
         time.sleep(rng.uniform(0.1, 0.4))  # 다음 시도까지 잠깐
 
 
+# --- 전부 채우기(시연): 남은 좌석만 골라 확정될 때까지 긁는다 ---
+_remaining = None
+_rlock = threading.Lock()
+
+
+def _try(fn, *a, **k):
+    """연결 리셋 등 예외는 삼키고 (None,None) 반환 — 워커가 죽지 않게."""
+    try:
+        return fn(*a, **k)
+    except Exception as e:
+        bump(f"neterr_{type(e).__name__}")
+        return None, None
+
+
+def fill_worker(a, token, ip, start_at, stop_at):
+    wait_until(start_at)
+    while time.time() < stop_at:
+        with _rlock:
+            if not _remaining:
+                return
+            seat = random.choice(tuple(_remaining))
+        st, d = _try(browser_call, a.base, "POST", "/seat-request", token=token,
+                     body={"seat_id": seat}, xff=ip)
+        if st != 200 or not isinstance(d, dict):
+            time.sleep(0.3)
+            continue                      # 에러/차단 → 같은 풀에서 재시도(좌석 그대로)
+        bump("fill_req_ok")
+        rid = d.get("request_id")
+        end = time.time() + 5             # 판정 창(2s) + 여유
+        time.sleep(1.8)                   # 창이 닫히기 전엔 확정이 없으니 묻지 않는다(부하 ↓)
+        while time.time() < end:
+            time.sleep(0.3)
+            s2, d2 = _try(browser_call, a.base, "GET", f"/seat-status/{seat}", token=token, xff=ip)
+            if s2 == 200 and isinstance(d2, dict) and d2.get("status") == "confirmed":
+                with _rlock:
+                    _remaining.discard(seat)   # 누가 땄든 이 좌석은 찼다
+                if d2.get("winner_request_id") == rid:
+                    bump("fill_win")
+                    # 결제가 연결 끊김으로 빠지면 HOLD_SEC 뒤 좌석이 반환돼 빈자리가 남는다 → 재시도
+                    for _ in range(8):
+                        sp, _d = _try(browser_call, a.base, "POST", "/payment", token=token,
+                                      body={"seat_id": seat, "request_id": rid}, xff=ip)
+                        if sp == 200:
+                            bump("fill_pay")
+                            break
+                        time.sleep(0.5)
+                    else:
+                        bump("fill_pay_fail")
+                break
+        # 확정 못 보면 좌석은 _remaining 에 그대로 남아 다음에 재시도된다
+
+
 def human_shot(a, token, ip, fire_at, seats):
     """측정용 사람 단발: 결제·폴링 없이 좌석요청 1건(정상 헤더/고유 IP/고유 계정 → 전 계층 통과)."""
     wait_until(fire_at)
@@ -329,10 +381,23 @@ def run(a):
             tok, ip = htok[j % len(htok)]
             futs.append(workers.submit(human_shot, a, tok, ip, ft, seats))
     else:
-        # 사람 액터(시연): 시작 시각을 fill 창에 흩뿌림
-        for i in range(1, a.human_actors + 1):
-            start_at = t0 + (fill * (i - 1) / max(1, a.human_actors)) * 0.4
-            futs.append(workers.submit(human_actor, a, i, start_at, t0 + fill, seats))
+        # 시연(전부 채우기): 남은 좌석만 긁어 3000석을 꽉 채운다.
+        global _remaining
+        _remaining = set(seats)
+        print(f"[run] 시연 모드: 사람 {a.human_actors}명이 좌석 {len(seats)}석을 꽉 채울 때까지", flush=True)
+        htok = []
+        def hlogin(i):
+            gi = a.human_offset + i
+            tok = login(base, f"h{gi:05d}@doon.kr", f"hdev{gi:05d}", xff=rand_ip(f"h{gi}"))
+            if tok:
+                htok.append((tok, rand_ip(f"h{gi}")))
+        with ThreadPoolExecutor(max_workers=40) as ex:
+            list(ex.map(hlogin, range(1, a.human_actors + 1)))
+        print(f"[run] 사람 토큰 {len(htok)}개", flush=True)
+        deadline = t0 + fill + 180      # fill 초에 걸쳐 차오르되, 다 찰 때까지(최대 +3분) 계속
+        for i, (tok, ip) in enumerate(htok):
+            start_at = t0 + (fill * i / max(1, len(htok))) * 0.5   # 앞 절반 구간에 투입(climb)
+            futs.append(workers.submit(fill_worker, a, tok, ip, start_at, deadline))
     # 매크로: fill 창 전체에 단발 흩뿌림
     def sched(n):
         return [t0 + fill * j / max(1, n) for j in range(n)]

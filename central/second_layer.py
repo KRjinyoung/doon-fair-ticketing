@@ -33,6 +33,12 @@ MODE = os.environ.get("L2_MODE", "monitor").strip().lower()
 if MODE not in ("off", "monitor", "enforce"):
     MODE = "monitor"
 
+# 미결제 선점 카운터(l2:unpaid:<계정>)의 수명(초). 0 이면 무제한(예전 동작).
+# 이 값이 없으면 카운터가 영구 누적되어, 결제 없이 테스트/시연만 해도 계정이
+# max_unpaid 를 넘어 2차에서 영구 차단된다("판정중"에서 멈춤). 최근 구간만 보도록
+# TTL 을 둔다. 새 미결제가 생길 때마다 창이 갱신된다(슬라이딩).
+UNPAID_TTL_SEC = float(os.environ.get("UNPAID_TTL_SEC", "600"))
+
 DEFAULT_PARAMS = {
     "rate": {"account": [10.0, 30], "device": [10.0, 40]},   # [창(초), 한도] — 전국 합산
     "device_accounts": {"max": 3, "young_days": 7},         # 기기당 계정 > max 이고 계정 나이 < young_days
@@ -117,7 +123,10 @@ async def add_unpaid(acct: str):
     if _r is None or not acct:
         return
     try:
-        await _r.incr(f"l2:unpaid:{acct}")
+        k = f"l2:unpaid:{acct}"
+        await _r.incr(k)
+        if UNPAID_TTL_SEC > 0:
+            await _r.expire(k, int(UNPAID_TTL_SEC))
     except Exception:
         pass
 

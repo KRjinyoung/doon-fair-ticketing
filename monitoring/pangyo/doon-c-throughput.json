@@ -1,0 +1,788 @@
+{
+ "id": null,
+ "uid": "doon-c-throughput",
+ "title": "C. 처리 안정성 — 버퍼와 지연",
+ "description": "입력·처리·DB 속도와 Kafka 버퍼",
+ "tags": [
+  "doon",
+  "demo"
+ ],
+ "timezone": "browser",
+ "editable": true,
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "1s",
+ "time": {
+  "from": "now-15m",
+  "to": "now"
+ },
+ "timepicker": {
+  "refresh_intervals": [
+   "1s",
+   "2s",
+   "5s",
+   "10s",
+   "30s"
+  ]
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "row",
+   "title": "① 들어오는 속도 vs 처리하는 속도",
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 0
+   },
+   "panels": []
+  },
+  {
+   "id": 2,
+   "type": "timeseries",
+   "title": "입력 · 처리 · DB 기록 속도 (건/초)",
+   "description": "PoP 접수(입력) → Kafka 적재(매크로 통과분) → 중앙 판정 소비(처리) → DB 기록(묶음 저장)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 1,
+    "w": 16,
+    "h": 11
+   },
+   "targets": [
+    {
+     "expr": "sum(max by (pop_id) (rate(pop_seat_requests_total[$__rate_interval])))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "PoP 접수 (입력)"
+    },
+    {
+     "expr": "sum(rate(kafka_topic_partition_current_offset{topic=\"seat-requests\"}[$__rate_interval]))",
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "Kafka 적재"
+    },
+    {
+     "expr": "sum(rate(kafka_consumergroup_current_offset_sum{consumergroup=\"central-judge-group\",topic=\"seat-requests\"}[$__rate_interval]))",
+     "refId": "C",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "중앙 판정 소비 (처리)"
+    },
+    {
+     "expr": "sum(rate(pg_stat_database_tup_inserted{datname=\"ticketing\"}[$__rate_interval]))",
+     "refId": "D",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "DB 기록 (묶음 저장)"
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "transparent",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "PoP 접수 (입력)"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Kafka 적재"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "yellow"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "중앙 판정 소비 (처리)"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "DB 기록 (묶음 저장)"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": 3,
+   "type": "stat",
+   "title": "최대 입력 속도",
+   "description": "보이는 시간 범위에서 PoP 접수 속도의 최댓값",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 1,
+    "w": 4,
+    "h": 5
+   },
+   "targets": [
+    {
+     "expr": "max_over_time((sum(max by (pop_id) (rate(pop_seat_requests_total[5s]))))[$__range:1s])",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": ""
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "auto",
+    "textMode": "value",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "orange",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 4,
+   "type": "stat",
+   "title": "최대 처리 속도",
+   "description": "보이는 시간 범위에서 중앙 판정 소비 속도의 최댓값",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 20,
+    "y": 1,
+    "w": 4,
+    "h": 5
+   },
+   "targets": [
+    {
+     "expr": "max_over_time((sum(rate(kafka_consumergroup_current_offset_sum{consumergroup=\"central-judge-group\",topic=\"seat-requests\"}[5s])))[$__range:1s])",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": ""
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "auto",
+    "textMode": "value",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 5,
+   "type": "stat",
+   "title": "버퍼 체류 시간",
+   "description": "Kafka 에 쌓인 요청 수 ÷ 현재 처리 속도 (Little 의 법칙)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 6,
+    "w": 4,
+    "h": 6
+   },
+   "targets": [
+    {
+     "expr": "sum(kafka_consumergroup_lag_sum{consumergroup=\"central-judge-group\",topic=\"seat-requests\"}) / clamp_min(sum(rate(kafka_consumergroup_current_offset_sum{consumergroup=\"central-judge-group\",topic=\"seat-requests\"}[10s])), 1)",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": ""
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "auto",
+    "textMode": "value",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "yellow",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 2
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 6,
+   "type": "stat",
+   "title": "판정 대비 DB 기록",
+   "description": "보이는 시간 범위 동안 중앙이 처리한 요청 대비 DB 에 기록한 행 비율",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 20,
+    "y": 6,
+    "w": 4,
+    "h": 6
+   },
+   "targets": [
+    {
+     "expr": "100 * sum(increase(pg_stat_database_tup_inserted{datname=\"ticketing\"}[$__range])) / clamp_min(sum(increase(kafka_consumergroup_current_offset_sum{consumergroup=\"central-judge-group\",topic=\"seat-requests\"}[$__range])), 1)",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": ""
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "auto",
+    "textMode": "value",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 7,
+   "type": "row",
+   "title": "② 밀리지 않는가, 얼마나 걸리는가",
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 12
+   },
+   "panels": []
+  },
+  {
+   "id": 8,
+   "type": "timeseries",
+   "title": "Kafka 컨슈머 lag (건)",
+   "description": "seat-requests · central-judge-group. PoP 가 넣었지만 중앙이 아직 처리하지 않은 요청 수.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 13,
+    "w": 8,
+    "h": 10
+   },
+   "targets": [
+    {
+     "expr": "sum(kafka_consumergroup_lag_sum{consumergroup=\"central-judge-group\",topic=\"seat-requests\"})",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "lag"
+    },
+    {
+     "expr": "sum(central_dbbuf_pending)",
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "DB 저장 대기"
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 20,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "transparent",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "lag"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "yellow"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "DB 저장 대기"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": 9,
+   "type": "timeseries",
+   "title": "PoP → 중앙 도착 지연 (ms)",
+   "description": "PoP 가 접수한 시각부터 중앙이 받은 시각까지",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 13,
+    "w": 8,
+    "h": 10
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.95, sum by (le) (rate(central_pop_delay_ms_bucket[$__rate_interval])))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "P95"
+    },
+    {
+     "expr": "histogram_quantile(0.99, sum by (le) (rate(central_pop_delay_ms_bucket[$__rate_interval])))",
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "P99"
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "transparent",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "P95"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "P99"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": 10,
+   "type": "timeseries",
+   "title": "DB 묶음 저장 지연 (ms)",
+   "description": "Redis 버퍼에서 Postgres 로 한 묶음을 기록하는 데 걸린 시간. 확정 알림은 이를 기다리지 않는다.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 13,
+    "w": 8,
+    "h": 10
+   },
+   "targets": [
+    {
+     "expr": "1000 * histogram_quantile(0.95, sum by (le) (rate(central_db_write_duration_seconds_bucket[$__rate_interval])))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "P95"
+    },
+    {
+     "expr": "1000 * histogram_quantile(0.99, sum by (le) (rate(central_db_write_duration_seconds_bucket[$__rate_interval])))",
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "P99"
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "transparent",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "P95"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "P99"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

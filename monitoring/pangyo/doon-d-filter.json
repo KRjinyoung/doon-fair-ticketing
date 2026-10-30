@@ -1,0 +1,403 @@
+{
+ "id": null,
+ "uid": "doon-d-filter",
+ "title": "D. 매크로 필터 유무 비교",
+ "description": "필터 OFF/ON 에 따른 중앙·DB 부하",
+ "tags": [
+  "doon",
+  "demo"
+ ],
+ "timezone": "browser",
+ "editable": true,
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "1s",
+ "time": {
+  "from": "now-30m",
+  "to": "now"
+ },
+ "timepicker": {
+  "refresh_intervals": [
+   "1s",
+   "2s",
+   "5s",
+   "10s",
+   "30s"
+  ]
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "row",
+   "title": "같은 부하를 매크로 필터 OFF(monitor) 한 번, ON(enforce) 한 번 — 두 구간을 비교",
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 0
+   },
+   "panels": []
+  },
+  {
+   "id": 2,
+   "type": "timeseries",
+   "title": "PoP 접수 vs 중앙까지 넘어간 요청 (건/초)",
+   "description": "필터 OFF 구간에서는 두 선이 겹치고, ON 구간에서는 매크로가 걸러져 아래 선이 내려간다.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 1,
+    "w": 12,
+    "h": 10
+   },
+   "targets": [
+    {
+     "expr": "sum(max by (pop_id) (rate(pop_seat_requests_total[$__rate_interval])))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "PoP 접수"
+    },
+    {
+     "expr": "sum(max by (pop_id) (rate(pop_kafka_published_total[$__rate_interval])))",
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "중앙으로 전달 (Kafka)"
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 15,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "transparent",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "PoP 접수"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "중앙으로 전달 (Kafka)"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": 3,
+   "type": "timeseries",
+   "title": "중앙 판정 소비 (건/초)",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 1,
+    "w": 12,
+    "h": 10
+   },
+   "targets": [
+    {
+     "expr": "sum(rate(kafka_consumergroup_current_offset_sum{consumergroup=\"central-judge-group\",topic=\"seat-requests\"}[$__rate_interval]))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "중앙 판정 소비"
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 20,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "transparent",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "중앙 판정 소비"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": 4,
+   "type": "timeseries",
+   "title": "DB 기록 (행/초)",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 11,
+    "w": 12,
+    "h": 9
+   },
+   "targets": [
+    {
+     "expr": "sum(rate(pg_stat_database_tup_inserted{datname=\"ticketing\"}[$__rate_interval]))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "DB 기록"
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 20,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "transparent",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "DB 기록"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": 5,
+   "type": "stat",
+   "title": "현재 구간 매크로 차단율",
+   "description": "보이는 시간 범위 동안 PoP 에 들어온 요청 중 중앙으로 가지 않은 비율",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 11,
+    "w": 6,
+    "h": 9
+   },
+   "targets": [
+    {
+     "expr": "100 * (1 - sum(max by (pop_id) (increase(pop_kafka_published_total[$__range]))) / clamp_min(sum(max by (pop_id) (increase(pop_seat_requests_total[$__range]))), 1))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": ""
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "auto",
+    "textMode": "value",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 6,
+   "type": "text",
+   "title": "비교 방법",
+   "gridPos": {
+    "x": 18,
+    "y": 11,
+    "w": 6,
+    "h": 9
+   },
+   "options": {
+    "mode": "markdown",
+    "content": "1. `BOT_FILTER_MODE=monitor` 로 부하를 1회 실행 (탐지만, 차단 안 함)\n2. `BOT_FILTER_MODE=enforce` 로 같은 부하를 1회 실행\n3. 오른쪽 위 시간 범위를 각 구간에 맞추면 차단율과 중앙·DB 부하 차이가 숫자로 나온다.\n\n두 구간을 한 화면에 두려면 시간 범위를 두 실험이 모두 들어가게 넓힌다."
+   }
+  }
+ ]
+}

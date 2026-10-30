@@ -1,0 +1,658 @@
+{
+ "id": null,
+ "uid": "doon-a-fairness",
+ "title": "A. 공정성 — PoP 시각 동기화",
+ "description": "PoP 간 시계 동기화 정도와 오차 범위 추첨",
+ "tags": [
+  "doon",
+  "demo"
+ ],
+ "timezone": "browser",
+ "editable": true,
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "1s",
+ "time": {
+  "from": "now-15m",
+  "to": "now"
+ },
+ "timepicker": {
+  "refresh_intervals": [
+   "1s",
+   "2s",
+   "5s",
+   "10s",
+   "30s"
+  ]
+ },
+ "panels": [
+  {
+   "id": 2,
+   "type": "stat",
+   "title": "PoP 간 시계 차이 ε",
+   "description": "판교·대전 PoP 의 chrony 추정 오프셋 차이(절댓값). 지역 간 도착 격차(약 2 ms)와 비교해서 본다.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 5,
+    "h": 7
+   },
+   "targets": [
+    {
+     "expr": "abs(max(pop_clock_offset_ms{pop_id=\"pop-pangyo\"}) - max(pop_clock_offset_ms{pop_id=\"pop-daejeon\"})) * 1000",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": ""
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "auto",
+    "textMode": "value",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "µs",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 3,
+   "type": "stat",
+   "title": "판교 PoP 오프셋",
+   "description": "공통 NTP 기준 chrony 추정 오프셋 크기",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 5,
+    "y": 0,
+    "w": 5,
+    "h": 7
+   },
+   "targets": [
+    {
+     "expr": "abs(max(pop_clock_offset_ms{pop_id=\"pop-pangyo\"})) * 1000",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": ""
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "auto",
+    "textMode": "value",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "µs",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 4,
+   "type": "stat",
+   "title": "대전 PoP 오프셋",
+   "description": "공통 NTP 기준 chrony 추정 오프셋 크기",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 10,
+    "y": 0,
+    "w": 5,
+    "h": 7
+   },
+   "targets": [
+    {
+     "expr": "abs(max(pop_clock_offset_ms{pop_id=\"pop-daejeon\"})) * 1000",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": ""
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "auto",
+    "textMode": "value",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "µs",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "purple",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 5,
+   "type": "timeseries",
+   "title": "PoP별 시계 오프셋 (µs)",
+   "description": "두 PoP 모두 기준 시각에 수십 µs 이내로 붙어 있는지 본다.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 15,
+    "y": 0,
+    "w": 9,
+    "h": 7
+   },
+   "targets": [
+    {
+     "expr": "max by (pop_id) (pop_clock_offset_ms) * 1000",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "{{pop_id}}"
+    },
+    {
+     "expr": "(abs(max(pop_clock_offset_ms{pop_id=\"pop-pangyo\"}) - max(pop_clock_offset_ms{pop_id=\"pop-daejeon\"})) * 1000)",
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "ε (두 PoP 차이)"
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "µs",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "transparent",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pop-pangyo"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pop-daejeon"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "ε (두 PoP 차이)"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": 7,
+   "type": "timeseries",
+   "title": "보장 오차 한계 (ms)",
+   "description": "chrony 가 보장하는 최대 오차(루트 분산 + 루트 지연/2). 두 PoP 한계의 합 안이면 선후를 구분할 수 없어 추첨한다.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 7,
+    "w": 9,
+    "h": 10
+   },
+   "targets": [
+    {
+     "expr": "max by (pop_id) (pop_clock_error_ms)",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "{{pop_id}} 한계"
+    },
+    {
+     "expr": "sum(max by (pop_id) (pop_clock_error_ms))",
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "추첨 기준 (두 한계 합)"
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "transparent",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 2
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pop-pangyo 한계"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pop-daejeon 한계"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "추첨 기준 (두 한계 합)"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "yellow"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          6
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": 8,
+   "type": "bargauge",
+   "title": "1·2등 시각 차 분포 (ms 구간별 좌석 수)",
+   "description": "보이는 시간 범위 동안 판정된 좌석의 1등과 2등 보정 시각 차. 추첨 기준(약 3.8 ms)보다 작은 구간은 추첨, 큰 구간은 시각 순 판정.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 9,
+    "y": 7,
+    "w": 10,
+    "h": 10
+   },
+   "targets": [
+    {
+     "expr": "sum by (le) (increase(central_winner_margin_ms_bucket[$__range]))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "{{le}}",
+     "instant": true,
+     "range": false,
+     "format": "heatmap"
+    }
+   ],
+   "options": {
+    "orientation": "vertical",
+    "displayMode": "basic",
+    "showUnfilled": true,
+    "valueMode": "color",
+    "namePlacement": "auto",
+    "sizing": "auto",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "green"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 9,
+   "type": "stat",
+   "title": "추첨 판정 비율",
+   "description": "보이는 시간 범위 동안 판정된 좌석 중 시계 오차 범위 안이라 추첨한 비율",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 19,
+    "y": 7,
+    "w": 5,
+    "h": 5
+   },
+   "targets": [
+    {
+     "expr": "100 * sum(increase(central_tie_lottery_total[$__range])) / clamp_min(sum(increase(central_judgment_completed_total[$__range])), 1)",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": ""
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "auto",
+    "textMode": "value",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "orange",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 10,
+   "type": "stat",
+   "title": "추첨 판정 수",
+   "description": "보이는 시간 범위 동안 추첨으로 승자를 정한 좌석 수",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 19,
+    "y": 12,
+    "w": 5,
+    "h": 5
+   },
+   "targets": [
+    {
+     "expr": "sum(increase(central_tie_lottery_total[$__range]))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": ""
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "auto",
+    "textMode": "value",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "orange",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   }
+  }
+ ]
+}

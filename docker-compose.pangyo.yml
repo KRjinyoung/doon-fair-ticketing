@@ -104,8 +104,8 @@ services:
       # 나오거나 아예 안 보여서, 실제로는 정상인데 실패한 것처럼 오해하게 된다.
       - PYTHONUNBUFFERED=1
       # [시연용 임시] 수집창 고정. 하한=상한이라 자동 산정이 무시된다. 끝나면 이 두 줄 삭제.
-      - WINDOW_MIN_MS=3000
-      - WINDOW_MAX_MS=3000
+      - WINDOW_MIN_MS=${WINDOW_MS:-3000}
+      - WINDOW_MAX_MS=${WINDOW_MS:-3000}
       # 좌석당 경쟁이 20건을 넘으면 경쟁자 기록이 잘려서 상향  [시연용]
       - ALL_REQUESTS_KEEP=40
     depends_on:

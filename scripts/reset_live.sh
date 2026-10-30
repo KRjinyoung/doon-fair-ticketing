@@ -26,6 +26,8 @@ echo "[2/4] central 정지 후 중앙 DB 와 Redis 비우기"
 $DC stop central >/dev/null 2>&1
 $DC exec -T postgres psql -U ticketing -d ticketing -c "TRUNCATE confirmed_seats;" >/dev/null 2>&1
 $DC exec -T redis sh -c "redis-cli --scan --pattern 'sw:*' | xargs -r -n 500 redis-cli DEL" >/dev/null 2>&1
+# 결제 대기·미결제 횟수·2차 집계도 비운다 (세션·기기 정보 l2:sess/l2:dev 는 central 시작 때 DB 에서 다시 채움)  [MACRO3_V1]
+$DC exec -T redis sh -c "for p in 'hold:*' 'holds' 'l2:*'; do redis-cli --scan --pattern \"\$p\" | xargs -r -n 500 redis-cli DEL; done" >/dev/null 2>&1
 
 echo "[3/4] central 시작 (메모리 seat_windows 비우기)"
 $DC start central >/dev/null 2>&1

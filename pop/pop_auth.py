@@ -102,6 +102,7 @@ class Identity:
     session_id: str | None = None
     device_fp: str | None = None
     account_age_days: int | None = None
+    login_ip: str | None = None        # 로그인할 때의 IP (위조 가능해서 보조 신호)  [MACRO3_V1]
 
     def as_payload(self) -> dict:
         """Kafka 로 실어보낼 형태. None 은 그대로 둔다 (중앙에서 '미상'으로 구분)."""
@@ -110,6 +111,7 @@ class Identity:
             "session_id": self.session_id,
             "device_fp": self.device_fp,
             "account_age_days": self.account_age_days,
+            "login_ip": self.login_ip,
             "identity_verified": self.verified,
             "identity_reason": self.reason,
         }
@@ -255,6 +257,7 @@ def verify(token: str | None, pop_id: str) -> Identity:
             session_id=claims.get("sid"),
             device_fp=claims.get("dfp"),
             account_age_days=claims.get("age"),
+            login_ip=claims.get("lip"),
         )
     finally:
         auth_verify_seconds.labels(pop_id=pop_id).observe(time.perf_counter() - t0)

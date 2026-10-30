@@ -77,6 +77,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import httpx
+from fastapi.responses import JSONResponse as _PayJSON
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -264,8 +265,11 @@ async def kafka_consume_rules_loop():
                 try:
                     active_rules = _br.validate(json.loads(msg.value))
                     _fl.RULESET_VERSION = active_rules["version"]
+                    _fl.apply_params(active_rules["params"].get("l1"))  # [MACRO3_V1] 1차 한도 교체
                     print(f"[{POP_ID}] 봇 규칙 적용: {active_rules['version']} "
-                          f"({len(active_rules['rules'])}개)")
+                          f"(규칙 {len(active_rules['rules'])}개, 명단 계정 "
+                          f"{len(active_rules['blacklist']['accounts'])} · 기기 "
+                          f"{len(active_rules['blacklist']['devices'])})")
                 except Exception as e:
                     print(f"[{POP_ID}] 봇 규칙 묶음 무시 (offset {msg.offset}): {e}")
         except asyncio.CancelledError:
@@ -575,7 +579,9 @@ async def get_seat_status(seat_id: str):
     로컬 캐시(seat_status_cache)에서 바로 응답한다 — central 왕복 없이 즉시 응답.
     """
     cached = seat_status_cache.get(seat_id)
-    if cached is None:
+    # available = 초기화 스크립트나 결제 기한 초과로 다시 열린 좌석. 확정으로 읽으면
+    # winner_request_id 가 없어 500 이 났다.  [MACRO3_V1]
+    if cached is None or cached.get("status") == "available":
         return {"status": "open", "seat_id": seat_id}
 
     if cached["status"] == "pending":
@@ -593,6 +599,9 @@ async def get_seat_status(seat_id: str):
         "all_requests": cached.get("all_requests", []),
         # 시계 오차 안의 동점을 추첨했으면 묶음과 seed (없으면 None).  [TIE_LOTTERY_V1]
         "lottery": cached.get("lottery"),
+        # 좌석 선점: 결제 대기 중이면 paid=false, 결제 기한  [MACRO3_V1]
+        "paid": cached.get("paid"),
+        "hold_until": cached.get("hold_until"),
     }
 
 
@@ -706,6 +715,28 @@ def get_all_entries():
     return entry_records
 
 
+class PaymentRequest(BaseModel):
+    seat_id: str
+    request_id: str
+
+
+@app.post("/payment")
+async def payment(req: PaymentRequest, request: Request):
+    """
+    결제. 좌석 선점(결제 대기)을 끝낸다.  [MACRO3_V1]
+    결제 대기는 중앙(Redis)에 있으므로 그대로 전달하고, 로그인한 계정을 함께 실어
+    중앙이 "이 좌석을 이긴 계정이 맞나"를 확인하게 한다.
+    """
+    identity = getattr(request.state, "identity", None)
+    try:
+        res = await http_client.post(f"{CENTRAL_URL}/payment", json={
+            "seat_id": req.seat_id, "request_id": req.request_id,
+            "account_id": getattr(identity, "account_id", None)})
+        return _PayJSON(status_code=res.status_code, content=res.json())
+    except (httpx.HTTPError, ValueError):
+        return _PayJSON(status_code=503, content={"error": "central_unreachable"})
+
+
 # 정적 파일(정적 UI) 서빙 — 반드시 위의 API 라우트들을 다 정의한 뒤 마지막에 마운트해야
 # "/" 하위 정적 파일 처리가 다른 API 라우트를 가리지 않는다.
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
@@ -745,16 +776,20 @@ async def _bot_filter_middleware(request, call_next):
 
     ip = _fl.client_ip_of(request)
     headers = {k.lower(): v for k, v in request.headers.items()}
-    verdict = _fl.first_layer_filter(ip, headers, pop_id=POP_ID)
+    identity = getattr(request.state, "identity", None) or _pa.ANONYMOUS
+    verdict = _fl.first_layer_filter(ip, headers, pop_id=POP_ID, identity=identity,
+                                     seat_request=request.url.path == "/seat-request")  # [MACRO3_V1]
 
-    # 서울 규칙은 좌석 요청에만 돌린다. 학습 재료(detection-log)가 좌석 요청이라
+    # 서울 명단과 1차 규칙은 좌석 요청에만 돌린다. 학습 재료(detection-log)가 좌석 요청이라
     # 다른 경로에 돌리면 검증한 적 없는 곳에서 차단하게 된다.  [BOTRULES_V1]
-    if verdict.passed and active_rules["rules"] and request.url.path == "/seat-request":
-        identity = getattr(request.state, "identity", None) or _pa.ANONYMOUS
-        rule_id = _br.match(active_rules, {
-            "client_ip": ip, "headers": _fl.header_snapshot(request), **identity.as_payload()})
-        if rule_id:
-            verdict = _fl.FilterResult(passed=False, reason=f"rule:{rule_id}")
+    # 그림자 규칙은 막지 않고 detection-log 에 '막았을 것'으로만 남긴다.  [MACRO3_V1]
+    request.state.shadow_hits = []
+    if verdict.passed and request.url.path == "/seat-request":
+        block, shadow = _br.evaluate(active_rules, {
+            "client_ip": ip, "headers": _fl.header_snapshot(request), **identity.as_payload()}, 1)
+        request.state.shadow_hits = shadow
+        if block:
+            verdict = _fl.FilterResult(passed=False, reason=block)
             _fl.bot_flagged.labels(pop_id=POP_ID, reason=verdict.reason).inc()
 
     if (not verdict.passed) and _fl.MODE == "enforce":
@@ -762,7 +797,7 @@ async def _bot_filter_middleware(request, call_next):
         # 429 는 "속도를 줄여라", 403 은 "너는 안 된다".
         # 폴링 봇에게는 429 를 주는 편이 의미가 맞고, 정상 사용자가
         # 오탐된 경우에도 잠시 뒤 재시도하면 풀린다는 신호가 된다.
-        code = 429 if verdict.reason == "rate_limit" else 403
+        code = 429 if verdict.reason.startswith("rate_limit") else 403
         # 막힌 좌석 요청은 핸들러까지 안 가서 detection-log 에 안 남는다.
         # "1차가 무엇을 막았나"를 서울이 알 수 있게 여기서 한 줄 남긴다.
         # 좌석 요청만 남긴다. 폴링까지 남기면 봇 한 대가 Kafka 를 채운다.  [DETLOG_V2]
@@ -790,6 +825,7 @@ def _first_layer_payload(request) -> dict:
         "first_layer_mode": _fl.MODE,
         "first_layer_passed": verdict.passed if verdict else None,
         "first_layer_reason": (verdict.reason or None) if verdict else None,
+        "first_layer_shadow": getattr(request.state, "shadow_hits", None) or [],  # [MACRO3_V1]
         "headers": _fl.header_snapshot(request),
     }
 

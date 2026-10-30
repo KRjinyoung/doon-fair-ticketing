@@ -1,0 +1,567 @@
+{
+ "id": null,
+ "uid": "doon-b-macro",
+ "title": "B. 매크로 3계층 방어",
+ "description": "PoP · 중앙 · AI 3단계 차단 현황",
+ "tags": [
+  "doon",
+  "demo"
+ ],
+ "timezone": "browser",
+ "editable": true,
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "1s",
+ "time": {
+  "from": "now-15m",
+  "to": "now"
+ },
+ "timepicker": {
+  "refresh_intervals": [
+   "1s",
+   "2s",
+   "5s",
+   "10s",
+   "30s"
+  ]
+ },
+ "panels": [
+  {
+   "id": 2,
+   "type": "stat",
+   "title": "총 차단",
+   "description": "1·2·3단계에서 차단된 요청 합계 (컨테이너 재시작 이후 누적)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 6,
+    "h": 7
+   },
+   "targets": [
+    {
+     "expr": "sum(max by (pop_id, reason) (pop_bot_blocked_total)) + sum(max by (reason) (central_l2_flagged_total))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": ""
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "auto",
+    "textMode": "value",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 3,
+   "type": "stat",
+   "title": "1단계 · PoP",
+   "description": "헤더·IP·요청 빈도 검사로 PoP 입구에서 차단",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 6,
+    "y": 0,
+    "w": 6,
+    "h": 7
+   },
+   "targets": [
+    {
+     "expr": "sum(max by (pop_id, reason) (pop_bot_blocked_total{reason!~\"blacklist:.*|rule:.*\"}))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": ""
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "auto",
+    "textMode": "value",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "orange",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 4,
+   "type": "stat",
+   "title": "2단계 · 중앙",
+   "description": "기기 농장·좌석 선점 등 계정·기기 상태 검사로 판정 후보에서 제외",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 6,
+    "h": 7
+   },
+   "targets": [
+    {
+     "expr": "sum(max by (reason) (central_l2_flagged_total))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": ""
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "auto",
+    "textMode": "value",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "yellow",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 5,
+   "type": "stat",
+   "title": "3단계 · AI 명단/규칙",
+   "description": "서울 AI 클라우드가 학습해 배포한 계정·기기 명단과 헤더 순서 규칙으로 차단",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 18,
+    "y": 0,
+    "w": 6,
+    "h": 7
+   },
+   "targets": [
+    {
+     "expr": "sum(max by (pop_id, reason) (pop_bot_blocked_total{reason=~\"blacklist:.*|rule:.*\"}))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": ""
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "auto",
+    "textMode": "value",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "purple",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 7,
+   "type": "timeseries",
+   "title": "단계별 초당 차단 수",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 7,
+    "w": 15,
+    "h": 10
+   },
+   "targets": [
+    {
+     "expr": "sum(max by (pop_id, reason) (rate(pop_bot_blocked_total{reason!~\"blacklist:.*|rule:.*\"}[$__rate_interval])))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "1단계 PoP"
+    },
+    {
+     "expr": "sum(max by (reason) (rate(central_l2_flagged_total[$__rate_interval])))",
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "2단계 중앙"
+    },
+    {
+     "expr": "sum(max by (pop_id, reason) (rate(pop_bot_blocked_total{reason=~\"blacklist:.*|rule:.*\"}[$__rate_interval])))",
+     "refId": "C",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "3단계 AI"
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 25,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "transparent",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "1단계 PoP"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "2단계 중앙"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "yellow"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "3단계 AI"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": 8,
+   "type": "bargauge",
+   "title": "차단 사유 (누적)",
+   "description": "PoP 1·3단계 사유와 중앙 2단계 사유",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 15,
+    "y": 7,
+    "w": 9,
+    "h": 10
+   },
+   "targets": [
+    {
+     "expr": "sort_desc(sum by (reason) (max by (pop_id, reason) (pop_bot_blocked_total)))",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "{{reason}}",
+     "instant": true,
+     "range": false
+    },
+    {
+     "expr": "sort_desc(sum by (reason) (central_l2_flagged_total))",
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "{{reason}}",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "basic",
+    "showUnfilled": true,
+    "valueMode": "color",
+    "namePlacement": "auto",
+    "sizing": "auto",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "orange"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "orange",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 11,
+   "type": "timeseries",
+   "title": "PoP 매크로 검사 통과율 (%)",
+   "description": "PoP 에 들어온 요청 중 Kafka 로 넘어간 비율. 매크로가 몰리면 내려간다.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "koren-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 17,
+    "w": 24,
+    "h": 7
+   },
+   "targets": [
+    {
+     "expr": "100 * sum(max by (pop_id) (rate(pop_kafka_published_total[$__rate_interval]))) / clamp_min(sum(max by (pop_id) (rate(pop_seat_requests_total[$__rate_interval]))), 0.001)",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "koren-prometheus"
+     },
+     "legendFormat": "통과율"
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 15,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "transparent",
+        "value": null
+       }
+      ]
+     },
+     "min": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "통과율"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

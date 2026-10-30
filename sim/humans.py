@@ -52,6 +52,8 @@ P = dict(
     max_attempts=3,
     open_sec=30,                # seat.html?every= 가 열려 있는 시간
     lat_mobile=(0.015, 0.045), lat_desktop=(0.003, 0.015),  # 한쪽 방향 네트워크 지연(s)
+    pay=0.97,                   # 이기면 결제하는 비율 (가끔 결제 화면에서 그만둔다)  [MACRO3_V1]
+    pay_median=6.0, pay_sigma=0.4,          # 이긴 뒤 결제 버튼까지 걸리는 시간(s)
 )
 
 # 기기 프로필: (비율, 모바일?, 헤더 순서, 값). 순서는 실측 그대로다.
@@ -177,6 +179,10 @@ class Human:
             rid = (d or {}).get("request_id")
             self.sent.append({"seat": seat, "at_ms": int(time.time() * 1000), "status": code})
             won = self.wait_result(seat, rid)
+            if won and rng.random() < P["pay"]:   # 이기면 결제 화면에서 결제한다  [MACRO3_V1]
+                time.sleep(min(15.0, lognorm(rng, P["pay_median"], P["pay_sigma"])))
+                code, _ = self.call("POST", "/payment", {"seat_id": seat, "request_id": rid})
+                self.sent[-1]["paid"] = code
             if won is not False:   # 이겼거나(True) 결과를 모르면(None) 그만
                 return
             t = time.time() + lognorm(rng, P["retry_median"], P["retry_sigma"])
@@ -198,9 +204,14 @@ def main():
     ap.add_argument("--open-at", type=float, required=True, help="오픈 시각 (epoch 초)")
     ap.add_argument("--n", type=int, default=30, help="사람 수 (user01.. 계정을 쓴다)")
     ap.add_argument("--bases", required=True, help="PoP 주소들, 쉼표로 구분")
+    ap.add_argument("--start", type=int, default=1, help="첫 계정 번호 (userNN)")
+    ap.add_argument("--fast", action="store_true",
+                    help="티켓팅 고수: 좌석을 미리 골라 두고 0초에 80~120ms 간격으로 연타 (오탐 시험용)  [MACRO3_EVAL]")
     a = ap.parse_args()
+    if a.fast:
+        P.update(anticipate=1.0, preselect=1.0, mash_gap=(0.08, 0.12))
 
-    people = [Human(i, a.bases.split(",")) for i in range(1, a.n + 1)]
+    people = [Human(i, a.bases.split(",")) for i in range(a.start, a.start + a.n)]
     for h in people:
         h.login()
     ths = [threading.Thread(target=h.play, args=(a.open_at,)) for h in people if h.token]

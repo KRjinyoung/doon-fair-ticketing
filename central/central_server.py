@@ -59,6 +59,9 @@ from pydantic import BaseModel
 from prometheus_client import Counter, Gauge, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 
+import second_layer as _l2  # 2차 판정 (전국 집계)  [MACRO3_V1]
+import seat_hold as _hold    # 좌석 선점: 결제 대기 → 결제 / 기한 초과 반환  [MACRO3_V1]
+
 # 테스트하기 편하게 창을 넉넉히 5초로 잡는다.
 # 실제 시스템에서는 P99 지연 기반으로 80~250ms 수준까지 줄여야 한다.
 WINDOW_SECONDS = 5.0
@@ -68,6 +71,7 @@ WINDOW_SECONDS = 5.0
 # - seat-status:   Central -> 모든 PoP (Central이 발행, 각 PoP가 구독해서 로컬 캐시를 채움)
 KAFKA_BROKER = os.environ.get("KAFKA_BROKER", "kafka:9092")
 KAFKA_TOPIC_SEAT_REQUESTS = "seat-requests"
+KAFKA_TOPIC_DETECTION_LOG = "detection-log"   # 2차·결제 대기 이벤트를 서울로  [MACRO3_V1]
 # 판정 컨슈머를 몇 개 병렬로 띄울지.  [PARCONSUME_V1]
 # seat-requests 는 key=seat_id 로 파티셔닝되므로 한 좌석은 항상 같은 파티션 ->
 # 같은 컨슈머로만 간다. 따라서 seat_windows(프로세스 메모리)가 흩어지지 않고,
@@ -116,7 +120,7 @@ DB_COMMAND_TIMEOUT = float(os.environ.get("DB_COMMAND_TIMEOUT", "10"))
 
 # 전체 좌석 수 (seat.html의 ZONES 설정과 반드시 일치해야 함: 8행 x (6+8+10+8+6)x2 = 608석).
 # *** 주의 (기술 부채): 지금은 프론트(seat.html ZONES)와 여기 숫자를 사람이 직접 맞춰야 한다.
-TOTAL_SEATS = 608
+TOTAL_SEATS = 3000
 
 db_pool: asyncpg.Pool | None = None
 kafka_producer: AIOKafkaProducer | None = None
@@ -425,6 +429,10 @@ async def lifespan(app: FastAPI):
             print(f"[central] Kafka producer 연결 실패 (재시도 {attempt + 1}/10): {e}")
             await asyncio.sleep(3)
 
+    # 2차 판정: Redis 연결 + 세션 적재, 서울 규칙 묶음 구독  [MACRO3_V1]
+    await _l2.start(os.environ.get("REDIS_URL", ""), auth_pool, kafka_producer)
+    l2_rules_task = asyncio.create_task(_l2.rules_loop(KAFKA_BROKER))
+
     # 판정 컨슈머를 파티션 수만큼 병렬로 띄운다.  [PARCONSUME_V1]
     consumer_tasks = [
         asyncio.create_task(kafka_consume_loop(i))
@@ -439,6 +447,7 @@ async def lifespan(app: FastAPI):
     yield
     for t in consumer_tasks:
         t.cancel()
+    l2_rules_task.cancel()
     pool_task.cancel()
     await kafka_producer.stop()
     await db_pool.close()
@@ -686,6 +695,7 @@ async def publish_seat_status(payload: dict):
     seat-status 토픽에 발행하는 공용 헬퍼. confirmed 이벤트는 반드시 DB 커밋 이후에
     호출되어야 한다 (호출부에서 순서를 보장함 — 이 함수 자체는 순서를 모른다).
     """
+    payload = await _hold.annotate(payload)  # 확정이면 결제 대기 등록 + paid/hold_until  [MACRO3_V1]
     try:
         await kafka_producer.send_and_wait(
             KAFKA_TOPIC_SEAT_STATUS, key=payload["seat_id"], value=payload
@@ -842,9 +852,13 @@ async def kafka_consume_loop(consumer_idx: int = 0):
                     timeout_ms=200, max_records=KAFKA_JUDGE_BATCH
                 )
                 for _tp, msgs in batches.items():
-                    for msg in msgs:
+                    # 2차 판정: 걸린 요청은 판정 후보에서만 뺀다 (순서·추첨은 그대로)  [MACRO3_V1]
+                    keep = await _l2.filter_batch([m.value for m in msgs])
+                    for msg, ok in zip(msgs, keep):
                         data = msg.value
                         kafka_consumed_total.inc()
+                        if not ok:
+                            continue
                         apply_seat_request(
                             data["seat_id"],
                             data["request_id"],
@@ -1055,6 +1069,7 @@ async def auth_login(req: _LoginReq, request: _Request):
             "INSERT INTO sessions (session_id, account_id, device_fp, login_ip) "
             "VALUES ($1,$2,$3,$4)", session_id, row["account_id"], device_fp, ip)
         auth_sessions_gauge.set(await conn.fetchval("SELECT COUNT(*) FROM sessions"))
+    await _l2.on_login(session_id, row["account_id"], device_fp)  # [MACRO3_V1]
 
     now = _dt.datetime.now(_dt.timezone.utc)
     created = row["created_at"]
@@ -1068,6 +1083,7 @@ async def auth_login(req: _LoginReq, request: _Request):
             "sid": session_id,          # 이번 접속 (로그인마다 새로)
             "dfp": device_fp,           # 브라우저 지문 (받아서 봉인)
             "age": age_days,            # 계정 나이(일) — 위조 불가한 봇 신호
+            "lip": ip,                  # 로그인 IP — 위조 가능해서 보조 신호로만  [MACRO3_V1]
             "iat": int(now.timestamp()),
             "exp": int((now + _dt.timedelta(minutes=TOKEN_TTL_MIN)).timestamp()),
         },
@@ -1448,6 +1464,8 @@ _REDIS_BACKEND = os.environ.get("STATE_BACKEND", "memory").strip().lower() == "r
 
 if _REDIS_BACKEND:
     from redis_window import RedisWindowStore as _RedisWindowStore
+    import redis_window as _rw  # 키 이름 (좌석 반환용)  [MACRO3_V1]
+    from fastapi.responses import JSONResponse
 
     REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
     # 마감 시각 + 이 시간이 지나도 열려 있는 창은 고아 창으로 보고 청소기가 닫는다.
@@ -1562,6 +1580,7 @@ if _REDIS_BACKEND:
 
     async def _redis_publish_confirmed(payload: dict) -> bool:
         """publish_seat_status 와 같은 발행이지만 성공 여부를 돌려준다 (실패 시 방송 대기 목록에 남기기 위해)."""
+        payload = await _hold.annotate(payload)  # 결제 대기 등록 + paid/hold_until  [MACRO3_V1]
         try:
             await kafka_producer.send_and_wait(
                 KAFKA_TOPIC_SEAT_STATUS, key=payload["seat_id"], value=payload
@@ -1792,7 +1811,14 @@ if _REDIS_BACKEND:
                     msgs = [m for ms in batches.values() for m in ms]
                     if not msgs:
                         continue
-                    await _redis_apply_batch(msgs)   # 예외가 나면 커밋하지 않는다
+                    # 2차 판정: 걸린 요청은 판정 후보에서만 뺀다 (순서·추첨·Lua 는 그대로)  [MACRO3_V1]
+                    keep = await _l2.filter_batch([m.value for m in msgs])
+                    dropped = len(msgs) - sum(keep)
+                    msgs = [m for m, ok in zip(msgs, keep) if ok]
+                    if dropped:
+                        kafka_consumed_total.inc(dropped)
+                    if msgs:
+                        await _redis_apply_batch(msgs)   # 예외가 나면 커밋하지 않는다
                     await consumer.commit()
             except asyncio.CancelledError:
                 await consumer.stop()
@@ -1834,6 +1860,9 @@ if _REDIS_BACKEND:
             n = await _store.hydrate_confirmed([dict(r) for r in rows])
             print(f"[central] 확정 좌석 {n}건을 Postgres -> Redis 로 복원했습니다 [REDIS_V1]")
             _redis_ready.set()
+            # 좌석 선점(결제 대기). 만료되면 확정을 지우고 좌석을 돌려준다.  [MACRO3_V1]
+            await _hold.start(REDIS_URL, _redis_release, _redis_payload, publish_seat_status,
+                              _l2.add_unpaid, _detlog)
             sweeper = asyncio.create_task(_redis_sweeper())
             writer = asyncio.create_task(_redis_db_writer()) if _REDIS_DB_BUFFER else None
             if _REDIS_DB_BUFFER:
@@ -1849,6 +1878,41 @@ if _REDIS_BACKEND:
         await _store.stop()
 
     app.router.lifespan_context = _redis_lifespan
+
+    # ---------------------------------------------------------------- 좌석 선점 (결제 단계)  [MACRO3_V1]
+    async def _redis_release(seat_id: str, rid: str) -> None:
+        """결제 기한 초과: 이 승자의 확정을 Redis·DB 에서 지우고 좌석을 다시 연다."""
+        c = await _store.get_confirmed(seat_id)
+        if c is not None and c["winner"]["request_id"] != rid:
+            return   # 그새 다른 확정으로 바뀌었다
+        await _store.r.delete(_rw.k_confirmed(seat_id), _rw.k_zset(seat_id), _rw.k_count(seat_id))
+        await _store.r.zrem(_rw.UNBROADCAST_KEY, seat_id)
+        try:
+            async with db_conn() as conn:
+                await conn.execute(
+                    "DELETE FROM confirmed_seats WHERE seat_id=$1 AND winner_request_id=$2", seat_id, rid)
+        except Exception as e:
+            print(f"[central] 반환 좌석 DB 삭제 실패 (seat_id={seat_id}): {e}", flush=True)
+        await publish_seat_status({"seat_id": seat_id, "status": "available", "released": "unpaid"})
+
+    async def _redis_payload(seat_id: str):
+        c = await _store.get_confirmed(seat_id)
+        return _redis_confirmed_payload(seat_id, c) if c else None
+
+    async def _detlog(event: dict) -> None:
+        try:
+            await kafka_producer.send(KAFKA_TOPIC_DETECTION_LOG, key=event.get("seat_id"), value=event)
+        except Exception as e:
+            print(f"[central] detection-log 발행 실패: {e}", flush=True)
+
+    class _PayReq(BaseModel):
+        seat_id: str
+        request_id: str
+        account_id: Optional[str] = None
+
+    async def _redis_http_payment(req: _PayReq):
+        code, body = await _hold.pay(req.seat_id, req.request_id, req.account_id)
+        return JSONResponse(status_code=code, content=body)
 
     # ---------------------------------------------------------------- HTTP 조회 교체
     def _redis_swap_route(path: str, endpoint) -> None:
@@ -1904,4 +1968,10 @@ if _REDIS_BACKEND:
     _redis_swap_route("/seats-overview", _redis_http_seats_overview)
     _redis_swap_route("/seat-count", _redis_http_seat_count)
     _redis_swap_route("/debug/windows", _redis_http_debug_windows)
+    # 결제 (PoP 가 전달). 정적 파일 mount 보다 앞에 둔다.  [MACRO3_V1]
+    app.add_api_route("/payment", _redis_http_payment, methods=["POST"])
+    app.router.routes.insert(
+        next((i for i, r in enumerate(app.router.routes)
+              if r.__class__.__name__ == "Mount" and getattr(r, "path", None) == ""), len(app.router.routes) - 1),
+        app.router.routes.pop())
     print("[central] STATE_BACKEND=redis 활성화됨 [REDIS_V1]", flush=True)

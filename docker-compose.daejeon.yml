@@ -35,7 +35,7 @@ services:
       # 1차 봇 필터 동작 모드: off | monitor | enforce
       #   monitor = 판정만 하고 통과시킴. 부하 테스트(curl)가 그대로 돌아간다.
       #   시연에서 차단을 보여줄 때만 enforce 로 바꾼다.
-      - BOT_FILTER_MODE=monitor
+      - BOT_FILTER_MODE=${BOT_FILTER_MODE:-monitor}   # 실가동은 .env 에 enforce  [MACRO3_LIVE]
 
       # 판교 중앙서버 (잔여석 조회, 인증 공개키 조회). 중계기의 10001 포트로 간다.
       - CENTRAL_URL=http://172.17.0.1:10001

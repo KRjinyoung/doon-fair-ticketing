@@ -14,7 +14,7 @@
  * 격리된 시험 환경이나, 사람과 합의한 수집 시간의 운영 판교(rounds.py)에만 쏜다.
  */
 const puppeteer = require('puppeteer-extra');
-const { BASE, AT, EMAIL, PASSWORD = 'doon1234', SEAT, STEALTH = '1' } = process.env;
+const { BASE, AT, EMAIL, PASSWORD = 'doon1234', SEAT, STEALTH = '1', PAY = '1', XFF, JITTER = '0', FP_NOISE = '0' } = process.env;
 if (STEALTH === '1') puppeteer.use(require('puppeteer-extra-plugin-stealth')());
 
 function msUntil(hms) {           // 오늘 hh:mm:ss.fff 까지 남은 ms
@@ -27,9 +27,18 @@ function msUntil(hms) {           // 오늘 hh:mm:ss.fff 까지 남은 ms
   if (!BASE) throw new Error('BASE 가 필요하다');
   const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage();
+  // 프록시 풀 흉내: 봇마다 다른 IP 로 보이게 한다 (실험판 nginx 만 이 헤더를 믿는다)  [MACRO3_V1]
+  if (XFF) await page.setExtraHTTPHeaders({ 'X-Forwarded-For': XFF });
+  // 기기 지문 흔들기: canvas 결과에 실행마다 다른 값을 섞어 계정마다 다른 기기로 보이게 한다  [MACRO3_EVAL]
+  if (FP_NOISE === '1') {
+    await page.evaluateOnNewDocument(salt => {
+      const orig = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = function (...a) { return orig.apply(this, a) + salt; };
+    }, Math.random().toString(36).slice(2));
+  }
 
   const out = o => console.log(JSON.stringify({
-    bot: STEALTH === '1' ? 'browser-stealth' : 'browser-plain', account: EMAIL || null, ...o }));
+    bot: process.env.LABEL || (STEALTH === '1' ? 'browser-stealth' : 'browser-plain'), account: EMAIL || null, ...o }));
 
   // 1차 필터에 걸리면 좌석 요청 전에 페이지부터 막힌다. 그것도 결과로 남긴다.
   const first = await page.goto(`${BASE}/${EMAIL ? 'login.html?returnTo=/seat.html' : 'seat.html'}`);
@@ -50,10 +59,11 @@ function msUntil(hms) {           // 오늘 hh:mm:ss.fff 까지 남은 ms
     els => els[Math.floor(Math.random() * els.length)].dataset.seatId);
   const sel = `.mini-seat[data-seat-id="${seatId}"]`;
 
-  if (AT) {                       // 마지막 50ms 는 바쁜 대기로 맞춘다
-    const left = msUntil(AT);
+  if (AT) {                       // 마지막 50ms 는 바쁜 대기로 맞춘다 (+ 시간 흔들기 0~JITTER ms)
+    const jit = Math.random() * parseFloat(JITTER);
+    const left = msUntil(AT) + jit;
     if (left > 50) await new Promise(r => setTimeout(r, left - 50));
-    await page.evaluate(end => { while (Date.now() < end); }, Date.now() + Math.max(0, msUntil(AT)));
+    await page.evaluate(end => { while (Date.now() < end); }, Date.now() + Math.max(0, msUntil(AT) + jit));
   }
 
   const firedAt = new Date().toISOString();
@@ -61,9 +71,35 @@ function msUntil(hms) {           // 오늘 hh:mm:ss.fff 까지 남은 ms
   const seat = await page.$eval(sel, el => (el.click(), el.dataset.seatId));
   await page.click('#reserveBtn');
   const res = await reply;
+  const text = await res.text();
   const ua = await page.evaluate(() => navigator.userAgent);  // 서버가 본 값
   const accountId = await page.evaluate(() => localStorage.getItem('doon_account_id'));
-  out({ stage: 'seat', seat, account_id: accountId || null, fired_at: firedAt, status: res.status(),
-        reply: (await res.text()).slice(0, 200), user_agent: ua });
+  const deviceFp = await page.evaluate(() => localStorage.getItem('doon_device_fp'));
+
+  // 이겼으면 결제한다 (매크로 업자는 표를 팔아야 하니 결제한다).  [MACRO3_V1]
+  let rid = null, won = null, paid = null;
+  try { rid = JSON.parse(text).request_id || null; } catch (e) {}
+  if (rid) {
+    won = await page.evaluate(async (s, r) => {
+      for (let i = 0; i < 24; i++) {
+        await new Promise(ok => setTimeout(ok, 500));   // 좌석 화면과 같은 0.5초
+        const d = await (await fetch('/seat-status/' + s)).json();
+        if (d.status === 'confirmed') return d.winner_request_id === r;
+      }
+      return null;
+    }, seat, rid);
+    if (won && PAY !== '0') {
+      paid = await page.evaluate(async (s, r) => {
+        const t = localStorage.getItem('doon_token');
+        const h = { 'Content-Type': 'application/json' };
+        if (t) h.Authorization = 'Bearer ' + t;
+        return (await fetch('/payment', { method: 'POST', headers: h,
+                                          body: JSON.stringify({ seat_id: s, request_id: r }) })).status;
+      }, seat, rid);
+    }
+  }
+  out({ stage: 'seat', seat, account_id: accountId || null, device_fp: deviceFp, fired_at: firedAt,
+        status: res.status(), reply: text.slice(0, 200), user_agent: ua,
+        requests: [{ seat, status: res.status(), request_id: rid, won, paid }] });
   await browser.close();
 })().catch(e => { console.error(e); process.exit(1); });

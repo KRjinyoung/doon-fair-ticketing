@@ -3,6 +3,10 @@
 공정 티켓팅 데모. 여러 지역 PoP(엣지)가 좌석 요청의 **도착 시각**만 찍어 중앙으로 넘기고,
 중앙이 **클럭 오프셋으로 보정한 시각**으로 승자를 판정한다.
 
+> **기준 시점: 2026-10-15.** 이후 추가·변경된 것 — 매크로 3단계 방어(1차 PoP · 2차 중앙 · 3차 서울 AI, `bot-rules` 토픽),
+> 결제 대기(승자가 `HOLD_SEC` 안에 결제하지 않으면 좌석 반환), 좌석 3000석, 실가동 모드 `enforce`.
+> 이 부분은 [README](README.md)와 [docs/research/13-macro-defense.md](docs/research/13-macro-defense.md)에 있다.
+
 ---
 
 ## 1. 구성 (판교 호스트 · `docker-compose.pangyo.yml`)
@@ -136,7 +140,7 @@ PoP: 5초마다 CSV 5번째 필드(System time, 초) × 1000 → clock_offset_ms
 |---|---|---|---|
 | 봇 필터 | `BOT_FILTER_MODE` | `monitor` | off / monitor(판정만) / enforce(403·429 차단) |
 | 신원 확인 | `AUTH_MODE` | `optional` | off / optional(토큰 없으면 익명) / required(401) |
-| 수집창 | 코드 상수 | 5.0초 | 좌석별 요청 수집 시간 |
+| 수집창 | `WINDOW_MIN_MS`~`WINDOW_MAX_MS` | 20~500ms 자동 (판교 시연 구성은 `WINDOW_MS` 3000ms 고정) | 좌석별 요청 수집 시간 |
 | 판정 DB 풀 / 인증 DB 풀 | `DB_POOL_MAX_SIZE` / `AUTH_POOL_MAX_SIZE` | 32 / 8 | 로그인 폭주가 판정 커넥션을 못 뺏게 물리적으로 분리 |
 | PoP 워커 | `UVICORN_WORKERS` | 4 | 지표는 `PROMETHEUS_MULTIPROC_DIR`로 합산 |
 

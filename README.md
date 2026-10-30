@@ -34,7 +34,7 @@ DOON은 KOREN 전국 PoP를 이용해 두 차이를 없앤다.
 
 ## Architecture
 
-![DOON 네트워크 구성도](https://github.com/KRjinyoung/doon-fair-ticketing/blob/feat/bot-rules/docs/report/network/doon_network.png?raw=true)
+![DOON 네트워크 구성도](docs/report/network/doon_network.png)
 
 | 구성 요소 | 위치 | 역할 |
 |---|---|---|
@@ -68,15 +68,15 @@ DOON은 KOREN 전국 PoP를 이용해 두 차이를 없앤다.
 | 2차 | Central | 전국 PoP 합산 + 중앙 DB | 신원 대조, 기기당 신규 계정 수, 미결제 선점, 전국 요청 수, AI 명단 | 판정 후보에서 제외 |
 | 3차 | 서울 AI | 전국 · 여러 회차 | 회차 간 도착 흩어짐 등 계정 행동 → 봇 확률 + 근거 | 직접 막지 않음, 1·2차로 배포 |
 
-3차는 정답표 없이 1·2차가 확실한 사유로 막은 계정을 '봇', 오래된 무사고 계정을 '사람'으로 삼아 학습한다(약한 지도 학습). 새 규칙은 그림자 모드로 먼저 나가 사람을 한 건도 맞히지 않을 때만 차단으로 승격된다. 자세한 내용은 [docs/research/13-macro-defense.md](https://github.com/KRjinyoung/doon-fair-ticketing/blob/feat/bot-rules/docs/research/13-macro-defense.md).
+3차는 정답표 없이 1·2차가 확실한 사유로 막은 계정을 '봇', 오래된 무사고 계정을 '사람'으로 삼아 학습한다(약한 지도 학습). 새 규칙은 그림자 모드로 먼저 나가 사람을 한 건도 맞히지 않을 때만 차단으로 승격된다. 자세한 내용은 [docs/research/13-macro-defense.md](docs/research/13-macro-defense.md).
 
 ## Results
 
 | 실험 | 결과 | 문서 |
 |---|---|---|
 | 지역 격차 실측 | 예매 사이트 5곳: 대전이 판교보다 평균 **+2.07ms** · RIPE Atlas 가정 회선: 전남이 수도권보다 **+1.3~3.5ms** | [06](docs/research/06-regional-gap.md) |
-| 같은 순간 클릭 대결 (실서비스, 99좌석) | 서버 도착순: 대전 **0/99** → DOON: 대전 **54/99** (99좌석 모두 보장 범위 안 추첨) | [11](https://github.com/KRjinyoung/doon-fair-ticketing/blob/feat/bot-rules/docs/research/11-duel.md) |
-| 매크로 3단계 (격리 실험판, 18회차) | 4회차부터 봇 6종 모두 차단, 처음 보는 봇 계정은 AI가 만든 규칙에 **첫 요청부터** 차단, 사람 요청 차단 **0건**, 3차 재학습·배포 약 0.2초 | [13](https://github.com/KRjinyoung/doon-fair-ticketing/blob/feat/bot-rules/docs/research/13-macro-defense.md) |
+| 같은 순간 클릭 대결 (실서비스, 99좌석) | 서버 도착순: 대전 **0/99** → DOON: 대전 **54/99** (99좌석 모두 보장 범위 안 추첨) | [11](docs/research/11-duel.md) |
+| 매크로 3단계 (격리 실험판, 18회차) | 4회차부터 봇 6종 모두 차단, 처음 보는 봇 계정은 AI가 만든 규칙에 **첫 요청부터** 차단, 사람 요청 차단 **0건**, 3차 재학습·배포 약 0.2초 | [13](docs/research/13-macro-defense.md) |
 
 한계도 같은 문서에 적었다. 시간·헤더·기기를 모두 위장하면서 사람의 약 90%보다 빠른 봇은 시간 신호만으로 사람(손 빠른 사람)과 가를 수 없어 추가 인증으로 넘겨야 하고, 대리 예매는 범위 밖이다. 사람 쪽 데이터는 시뮬레이터다.
 
@@ -171,6 +171,10 @@ bash scripts/reset.sh               # 전체 초기화 (PoP 재시작 포함)
 bash scripts/imhero_load.sh equiv   # 부하 테스트
 python3 scripts/duel.py --side pangyo --start HH:MM:SS --n 100   # 같은 순간 클릭 대결
 
+# 혼합 부하 (사람 채움·결제 + 매크로 1·2·3차, 3000석)
+python3 loadmix/run.py provision --base http://localhost:13198 --humans 600 --farm-groups 40
+python3 loadmix/run.py run --base http://localhost:13198 --at HH:MM:SS --fill-seconds 45 --human-actors 400 --macro-per-tier 4000
+
 # 격리 실험판 (실서비스와 분리된 별도 compose 프로젝트)
 SIM_FILTER_MODE=enforce bash sim/up.sh
 python3 bots/rounds.py --help       # 봇 6종 + 사람 시뮬레이터 회차 진행
@@ -186,6 +190,7 @@ bash sim/down.sh
 ├── seoul/                      # detection-log 수집기, 3차 AI (ai3.py)
 ├── bots/                       # 실험용 매크로 6종, 회차 진행기
 ├── sim/                        # 격리 실험판, 사람 시뮬레이터, 평가 스크립트
+├── loadmix/                    # 혼합 부하 러너, 3000석 좌석 생성기
 ├── nginx/                      # 진입점 라우팅 (판교 · 대전)
 ├── monitoring/                 # Prometheus, Grafana
 ├── scripts/                    # 운영, 시연, 대결 실험, 부하 테스트
@@ -205,8 +210,8 @@ bash sim/down.sh
 | [SYSTEM.md](SYSTEM.md) | 컨테이너 구성, 사용자 흐름, 판정·시각 동기화 상세 |
 | [docs/research/](docs/research/README.md) | 조사·분석 자료 목록 |
 | [06-regional-gap](docs/research/06-regional-gap.md) | 지역 격차 실측 |
-| [11-duel](https://github.com/KRjinyoung/doon-fair-ticketing/blob/feat/bot-rules/docs/research/11-duel.md) | 같은 순간 클릭 대결 |
-| [13-macro-defense](https://github.com/KRjinyoung/doon-fair-ticketing/blob/feat/bot-rules/docs/research/13-macro-defense.md) | 매크로 3단계 방어 총정리 |
+| [11-duel](docs/research/11-duel.md) | 같은 순간 클릭 대결 |
+| [13-macro-defense](docs/research/13-macro-defense.md) | 매크로 3단계 방어 총정리 |
 
 ## Team
 
